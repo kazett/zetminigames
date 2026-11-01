@@ -13,3 +13,25 @@ hud:
   head-advance: 8
   # Lebar satu slot kepala (frame 10px + jarak). Minimal 10.
   slot-width: 11
+
+battleroyale:
+  center:
+    x: 0
+    z: 0
+  sky:
+    y: 200
+    radius: 16
+  zone:
+    start-size: 500
+    final-size: 20
+    stages: 6
+    total-seconds: 1200
+    min-wait-seconds: 45
+    min-shrink-seconds: 30
+    damage: 1.0
+  pvp-delay-seconds: 60
+  # Mode tes (panel Battle Royale > MODE TES). Game jalan sama persis kayak normal.
+  # Isi angka ini kalau mau tes lebih cepat (0 / -1 = sama kayak game normal).
+  test:
+    total-seconds: 0       # contoh 300 = zona selesai mengecil di menit 5
+    pvp-delay-seconds: -1  # contoh 10 = PVP aktif 10 detik setelah turun

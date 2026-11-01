@@ -86,6 +86,32 @@ for i, (rows, col) in enumerate(ICONS):
     sheet.alpha_composite(sprite(rows, {"X": col}), (i * 8, 0))
 sheet.save("hud_icons.png")
 
+
+# ---- ikon Battle Royale (zona, pvp, kill, warning) + panah arah zona ----
+BR_ICONS = [
+    (["..XXXX..", ".X....X.", "X..XX..X", "X.XXXX.X", "X.XXXX.X", "X..XX..X", ".X....X.", "..XXXX.."], (110, 200, 255, 255)),
+    (["X......X", ".X....X.", "..X..X..", "...XX...", "...XX...", "..X..X..", ".XX..XX.", "XX....XX"], (255, 110, 110, 255)),
+    (["........", ".XXXXXX.", "XXXXXXXX", "XooXXooX", "XXXooXXX", ".XXXXXX.", "..X..X..", "........"], (255, 214, 60, 255)),
+    (["...XX...", "..XXXX..", "..XooX..", ".XXooXX.", ".XXooXX.", "XXXXXXXX", "XXXooXXX", "XXXXXXXX"], (255, 190, 50, 255)),
+]
+brs = Image.new("RGBA", (8 * len(BR_ICONS), 8), (0, 0, 0, 0))
+for i, (rows, col) in enumerate(BR_ICONS):
+    brs.alpha_composite(sprite(rows, {"X": col, "o": (30, 24, 10, 255)}), (i * 8, 0))
+brs.save("hud_br.png")
+
+ARROW = ["...XX...", "..XXXX..", ".XXXXXX.", "XXXXXXXX", "...XX...", "...XX...", "...XX...", "...XX..."]
+arrow_img = sprite(ARROW, {"X": (255, 255, 255, 255)})
+arrows = Image.new("RGBA", (64, 8), (0, 0, 0, 0))
+for i in range(8):
+    big = arrow_img.resize((64, 64), Image.NEAREST).rotate(-45 * i, resample=Image.BICUBIC)
+    small = big.resize((8, 8), Image.BOX)
+    for yy in range(8):
+        for xx in range(8):
+            a = small.getpixel((xx, yy))[3]
+            small.putpixel((xx, yy), (255, 255, 255, 255) if a >= 110 else (0, 0, 0, 0))
+    arrows.alpha_composite(small, (i * 8, 0))
+arrows.save("hud_arrows.png")
+
 # ---- layar WINNER ----
 F = {"W": ["X...X", "X...X", "X...X", "X.X.X", "X.X.X", "XX.XX", "X...X"],
      "I": ["XXXXX", "..X..", "..X..", "..X..", "..X..", "..X..", "XXXXX"],
@@ -225,11 +251,18 @@ prov = [space, {"type": "bitmap", "file": "minecraft:font/ascii.png", "ascent": 
         bm("hud_tpwarn", 12, 28, ["".join(chr(0xE035 + i) for i in range(5))]),
         bm("hud_banner_go", 12, 28, ["\ue03a"]), bm("hud_banner_swap", 12, 28, ["\ue03b"]), bm("hud_banner_elim", 12, 28, ["\ue03c"]),
         bm("hud_bar", -16, 5, ["".join(chr(0xE010 + i) for i in range(11))]),
-        bm("hud_icons", 7, 8, ["".join(chr(0xE020 + i) for i in range(len(ICONS)))])]
+        bm("hud_icons", 7, 8, ["".join(chr(0xE020 + i) for i in range(len(ICONS)))]),
+        bm("hud_br", -4, 8, ["".join(chr(0xE040 + i) for i in range(len(BR_ICONS)))])]
 json.dump({"providers": prov}, open("hud.json", "w"), indent=2)
 # font kedua: baris border (posisi lebih ke bawah)
 low = [{"type": "space", "advances": {" ": 4}},
        {"type": "bitmap", "file": "minecraft:font/ascii.png", "ascent": -23, "height": 8, "chars": ascii_rows},
-       bm("hud_border", -23, 8, ["\ue00a"])]
+       bm("hud_border", -23, 8, ["\ue00a"]),
+       bm("hud_br", -23, 8, ["".join(chr(0xE040 + i) for i in range(len(BR_ICONS)))]),
+       bm("hud_arrows", -23, 8, ["".join(chr(0xE050 + i) for i in range(8))])]
 json.dump({"providers": low}, open("hud_low.json", "w"), indent=2)
+top = [{"type": "space", "advances": {" ": 4}},
+       {"type": "bitmap", "file": "minecraft:font/ascii.png", "ascent": 8, "height": 8, "chars": ascii_rows},
+       bm("hud_br", 8, 8, ["".join(chr(0xE040 + i) for i in range(len(BR_ICONS)))])]
+json.dump({"providers": top}, open("hud_top.json", "w"), indent=2)
 print("ok")

@@ -20,6 +20,8 @@ public interface Match {
     int rounds();
     void testFinish(Player p);
     void testDraw(Player p);
+    /** Tombol "Seri (tes)" muncul di /panel mode tes? Game tanpa konsep seri (Battle Royale) override jadi false. */
+    default boolean hasTestDraw() { return true; }
     void forfeit(Player p);
     void forceShutdown();
     void onDamage(Player victim, EntityDamageEvent e);

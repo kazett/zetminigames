@@ -38,6 +38,24 @@
       "chars": [
         "\ue00a"
       ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_br.png",
+      "ascent": -23,
+      "height": 8,
+      "chars": [
+        "\ue040\ue041\ue042\ue043"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_arrows.png",
+      "ascent": -23,
+      "height": 8,
+      "chars": [
+        "\ue050\ue051\ue052\ue053\ue054\ue055\ue056\ue057"
+      ]
     }
   ]
 }

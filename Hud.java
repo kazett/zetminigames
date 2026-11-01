@@ -22,6 +22,16 @@ public final class Hud {
     /** Font kedua: ascii + ikon border digambar lebih ke bawah (baris ke-4 panel). */
     public static final Key FONT_LOW = Key.key("zetminigames", "hud_low");
     public static final String ICON_BORDER = "\uE00A";
+    /** Font ketiga: ascii digambar di baris paling atas (sejajar baris kepala). */
+    public static final Key FONT_TOP = Key.key("zetminigames", "hud_top");
+    // ikon Battle Royale (hud_br.png)
+    public static final String ICON_ZONE = "\uE040";
+    public static final String ICON_PVP = "\uE041";
+    public static final String ICON_KILLS = "\uE042";
+    public static final String ICON_WARN = "\uE043";
+    /** Panah arah ke zona: 8 arah, urutan searah jarum jam mulai dari atas (depan). */
+    public static final int ARROW_BASE = 0xE050;
+    public static final String[] ARROW_TEXT = {"\u2191", "\u2197", "\u2192", "\u2198", "\u2193", "\u2199", "\u2190", "\u2196"};
 
     public static final String PANEL = "\uE000";
     public static final String SKULL = "\uE001";
@@ -157,6 +167,76 @@ public final class Hud {
         // Total lebar = lebar panel, biar tetap center
         r.shiftTo(PANEL_W + 1);
         return r.out.shadowColor(ShadowColor.none());
+    }
+
+
+    /** Data HUD Battle Royale (satu objek per pemain per update). */
+    public record BrData(String phase, int phaseColor, String timer, double frac,
+                         String pvp, int pvpColor, int alive, int total,
+                         int arrow, String distText, int distColor, int kills, boolean test) {}
+
+    /**
+     * HUD Battle Royale (panel 4 baris):
+     * baris 1 = fase zona (kiri) + timer (kanan), baris 2 = PVP (kiri) + jumlah hidup (kanan),
+     * baris 3 = bar waktu zona, baris 4 = panah + jarak ke zona (kiri) + kill (kanan).
+     */
+    public static Component buildBr(BrData d) {
+        Row r = new Row();
+        r.glyph(PANEL, PANEL_W + 1);
+
+        // Baris 1 (font atas)
+        r.shiftTo(6);
+        r.glyph(ICON_ZONE, GLYPH8_ADV, FONT_TOP);
+        r.shift(2);
+        r.text(d.phase(), TextColor.color(d.phaseColor()), FONT_TOP);
+        if (d.test()) {
+            r.shiftTo(PANEL_W / 2 + 6);
+            r.text("[TES]", TextColor.color(0xFFAA00), FONT_TOP);
+        }
+        r.shiftTo(PANEL_W - 6 - width(d.timer()));
+        r.text(d.timer(), TextColor.color(0xFFFFFF), FONT_TOP);
+
+        // Baris 2 (font utama)
+        r.shiftTo(6);
+        r.glyph(ICON_PVP, GLYPH8_ADV);
+        r.shift(2);
+        r.text(d.pvp(), TextColor.color(d.pvpColor()));
+        String cnt = d.alive() + "/" + d.total();
+        int xText = PANEL_W - 7 - width(cnt);
+        r.shiftTo(xText - 2 - GLYPH8_ADV);
+        r.glyph(ICON_ALIVE, GLYPH8_ADV);
+        r.shift(2);
+        r.text(cnt, TextColor.color(0xFFFFFF));
+
+        // Baris 3: bar kuning (isi = sisa waktu fase)
+        int totalPx = BAR_CHUNKS * CHUNK_W;
+        int fillPx = (int) Math.round(Math.max(0.0, Math.min(1.0, d.frac())) * totalPx);
+        r.shiftTo((PANEL_W - totalPx) / 2);
+        for (int i = 0; i < BAR_CHUNKS; i++) {
+            int fill = Math.max(0, Math.min(CHUNK_W, fillPx - i * CHUNK_W));
+            r.glyph(String.valueOf((char) (BAR_BASE + fill)), CHUNK_W + 1);
+            r.shift(-1);
+        }
+
+        // Baris 4 (font bawah): panah + jarak, kill di kanan
+        r.shiftTo(6);
+        int a = Math.floorMod(d.arrow(), 8);
+        out(r, Component.text(String.valueOf((char) (ARROW_BASE + a)), TextColor.color(d.distColor())).font(FONT_LOW), GLYPH8_ADV);
+        r.shift(2);
+        r.text(d.distText(), TextColor.color(d.distColor()), FONT_LOW);
+        String kills = String.valueOf(d.kills());
+        int kx = PANEL_W - 7 - width(kills);
+        r.shiftTo(kx - 2 - GLYPH8_ADV);
+        r.glyph(ICON_KILLS, GLYPH8_ADV, FONT_LOW);
+        r.shift(2);
+        r.text(kills, TextColor.color(0xFFFFFF), FONT_LOW);
+
+        r.shiftTo(PANEL_W + 1);
+        return r.out.shadowColor(ShadowColor.none());
+    }
+
+    private static void out(Row r, Component c, int adv) {
+        r.raw(c, adv);
     }
 
     /** Lebar teks ASCII vanilla (perkiraan; cukup buat posisi kanan). */

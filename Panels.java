@@ -26,6 +26,7 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -100,12 +101,19 @@ public final class Panels {
                 DialogAction.customClick((view, audience) ->
                         Bukkit.getScheduler().runTask(plugin, () -> openSettings(plugin, p, draftOf(GameType.MACE), null)), once()));
 
+        ActionButton brBtn = ActionButton.create(
+                lab(plugin, p, Hud.ICO_TROPHY, Component.text("Battle Royale", NamedTextColor.GREEN, TextDecoration.BOLD)),
+                Component.text("Turun dari langit, terakhir hidup menang"),
+                240,
+                DialogAction.customClick((view, audience) ->
+                        Bukkit.getScheduler().runTask(plugin, () -> createBrLobby(plugin, p)), once()));
+
         Dialog dialog = Dialog.create(b -> b.empty()
                 .base(DialogBase.builder(title(plugin, p, "GAMES"))
                         .body(List.of(DialogBody.plainMessage(
                                 Component.text("Pilih game", NamedTextColor.GRAY))))
                         .build())
-                .type(DialogType.multiAction(List.of(pofBtn, dsBtn, maceBtn), null, 1)));
+                .type(DialogType.multiAction(List.of(pofBtn, dsBtn, maceBtn, brBtn), null, 1)));
         p.showDialog(dialog);
     }
 
@@ -281,6 +289,7 @@ public final class Panels {
         if (lobby == null) { openMain(plugin, p); return; }
         boolean isHost = lobby.host.equals(p.getUniqueId());
         boolean isReady = lobby.ready.contains(p.getUniqueId());
+        if (isHost && lobby.settings.type == GameType.BATTLEROYALE) { openBrHost(plugin, p, null); return; }
 
         List<ActionButton> buttons = new ArrayList<>();
         if (!isReady) {
@@ -300,6 +309,120 @@ public final class Panels {
         p.showDialog(dialog);
     }
 
+    private static void createBrLobby(ZetMinigames plugin, Player host) {
+        GameSettings s = new GameSettings();
+        s.type = GameType.BATTLEROYALE;
+        String err = plugin.manager().createLobby(host, new ArrayList<>(), s);
+        if (err != null) {
+            host.sendMessage(Component.text(err, NamedTextColor.RED));
+            return;
+        }
+        openBrHost(plugin, host, null);
+    }
+
+    private static void openBrHost(ZetMinigames plugin, Player host, String error) {
+        Lobby lobby = plugin.manager().lobbyOf(host.getUniqueId());
+        if (lobby == null) { openMain(plugin, host); return; }
+        GameType type = lobby.settings.type;
+        List<String> readyNames = new ArrayList<>();
+        List<String> waitNames = new ArrayList<>();
+        for (UUID id : lobby.invited) {
+            Player o = Bukkit.getPlayer(id);
+            String name = o != null ? o.getName() : "?";
+            if (lobby.ready.contains(id)) readyNames.add(name); else waitNames.add(name);
+        }
+
+        List<DialogBody> body = new ArrayList<>();
+        boolean test = lobby.settings.testMode;
+        body.add(DialogBody.plainMessage(Component.text(
+                test ? "READY " + lobby.ready.size() + "/" + type.max + " (MODE TES: boleh sendiri)"
+                        : "READY " + lobby.ready.size() + "/" + type.max + " (min " + type.min + ")",
+                NamedTextColor.YELLOW, TextDecoration.BOLD)));
+        if (test) {
+            body.add(DialogBody.plainMessage(Component.text(
+                    "Mode tes: game jalan normal, tapi sisa 1 pemain TIDAK menang. Tutup game lewat /panel > Selesai (tes).",
+                    NamedTextColor.GOLD)));
+        }
+        body.add(DialogBody.plainMessage(Component.text(String.join(", ", readyNames), NamedTextColor.GREEN)));
+        if (!waitNames.isEmpty()) {
+            body.add(DialogBody.plainMessage(Component.text("Menunggu: " + String.join(", ", waitNames), NamedTextColor.GRAY)));
+        }
+        if (error != null) {
+            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD)));
+        }
+
+        List<ActionButton> buttons = new ArrayList<>();
+        buttons.add(btn(plugin, host, Hud.ICO_PLAY, "Start", NamedTextColor.GREEN, () -> {
+            String err = plugin.manager().startLobby(host);
+            if (err != null) openBrHost(plugin, host, err);
+        }));
+        buttons.add(btn(plugin, host, Hud.ICO_FLAG, test ? "MODE TES: ON" : "MODE TES: OFF",
+                test ? NamedTextColor.GOLD : NamedTextColor.GRAY, () -> {
+                    String err = plugin.manager().toggleTestMode(host);
+                    openBrHost(plugin, host, err);
+                }));
+        buttons.add(btn(plugin, host, Hud.ICO_USERS, "Undang Pemain", NamedTextColor.WHITE, () -> openBrInvite(plugin, host, null)));
+        buttons.add(btn(plugin, host, Hud.ICO_CHECK, "Refresh", NamedTextColor.AQUA, () -> openBrHost(plugin, host, null)));
+        buttons.add(btn(plugin, host, Hud.ICO_CROSS, "Batal", NamedTextColor.RED, () -> plugin.manager().cancel(host)));
+
+        Dialog dialog = Dialog.create(b -> b.empty()
+                .base(DialogBase.builder(title(plugin, host, "Lobby " + type.label))
+                        .body(body).build())
+                .type(DialogType.multiAction(buttons, null, 1)));
+        host.showDialog(dialog);
+    }
+
+    private static void openBrInvite(ZetMinigames plugin, Player host, String error) {
+        Lobby lobby = plugin.manager().lobbyOf(host.getUniqueId());
+        if (lobby == null) { openMain(plugin, host); return; }
+        List<Player> others = new ArrayList<>();
+        for (Player o : Bukkit.getOnlinePlayers()) {
+            if (o.equals(host) || plugin.manager().busy(o.getUniqueId())) continue;
+            others.add(o);
+            if (others.size() >= lobby.settings.type.max - 1) break;
+        }
+
+        List<DialogBody> body = new ArrayList<>();
+        body.add(DialogBody.plainMessage(Component.text("Pilih pemain yang diundang", NamedTextColor.GRAY)));
+        if (others.isEmpty()) {
+            body.add(DialogBody.plainMessage(Component.text("Gak ada yang online", NamedTextColor.DARK_GRAY)));
+        }
+        if (error != null) {
+            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD)));
+        }
+
+        List<DialogInput> inputs = new ArrayList<>();
+        for (int i = 0; i < others.size(); i++) {
+            inputs.add(DialogInput.bool("inv_" + i, Component.text(others.get(i).getName(), NamedTextColor.WHITE))
+                    .initial(false).build());
+        }
+
+        ActionButton send = ActionButton.create(
+                lab(plugin, host, Hud.ICO_PLAY, Component.text("Undang", NamedTextColor.GREEN, TextDecoration.BOLD)), null, 160,
+                DialogAction.customClick((view, audience) -> {
+                    List<Player> picked = new ArrayList<>();
+                    for (int i = 0; i < others.size(); i++) {
+                        if (Boolean.TRUE.equals(view.getBoolean("inv_" + i)) && others.get(i).isOnline()) {
+                            picked.add(others.get(i));
+                        }
+                    }
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        String err = plugin.manager().invite(host, picked);
+                        if (err != null) openBrInvite(plugin, host, err);
+                        else openBrHost(plugin, host, null);
+                    });
+                }, once()));
+        ActionButton back = ActionButton.create(lab(plugin, host, Hud.ICO_BACK, Component.text("Kembali", NamedTextColor.GRAY)), null, 120,
+                DialogAction.customClick((view, audience) ->
+                        Bukkit.getScheduler().runTask(plugin, () -> openBrHost(plugin, host, null)), once()));
+
+        Dialog dialog = Dialog.create(b -> b.empty()
+                .base(DialogBase.builder(title(plugin, host, "Undang Pemain"))
+                        .body(body).inputs(inputs).build())
+                .type(DialogType.confirmation(send, back)));
+        host.showDialog(dialog);
+    }
+
     /** Panel buat yang lagi main: tombol menyerah. */
     public static void openInGame(ZetMinigames plugin, Player p) {
         List<ActionButton> buttons = new ArrayList<>();
@@ -307,12 +430,16 @@ public final class Panels {
         if (g != null && g.isTestMode()) {
             buttons.add(btn(plugin, p, Hud.ICO_TROPHY, "Selesai (tes)",
                     NamedTextColor.GOLD, () -> g.testFinish(p)));
-            buttons.add(btn(plugin, p, Hud.ICO_USERS, "Seri (tes)", NamedTextColor.LIGHT_PURPLE, () -> g.testDraw(p)));
+            if (g.hasTestDraw()) {
+                buttons.add(btn(plugin, p, Hud.ICO_USERS, "Seri (tes)", NamedTextColor.LIGHT_PURPLE, () -> g.testDraw(p)));
+            }
         }
         buttons.add(btn(plugin, p, Hud.ICO_FLAG, "Menyerah", NamedTextColor.RED, () -> plugin.manager().leave(p)));
         Dialog dialog = Dialog.create(b -> b.empty()
                 .base(DialogBase.builder(title(plugin, p, "Game"))
-                        .body(List.of(DialogBody.plainMessage(Component.text("Lagi main"))))
+                        .body(List.of(DialogBody.plainMessage(g != null && g.isTestMode()
+                                ? Component.text("MODE TES: sisa 1 gak otomatis menang. Tekan Selesai buat nutup game.", NamedTextColor.GOLD)
+                                : Component.text("Lagi main"))))
                         .build())
                 .type(DialogType.multiAction(buttons, null, 1)));
         p.showDialog(dialog);

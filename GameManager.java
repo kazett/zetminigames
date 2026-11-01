@@ -1,5 +1,6 @@
 package id.zetminigames.core;
 
+import id.zetminigames.battleroyale.BattleRoyaleGame;
 import id.zetminigames.deathswap.DeathSwapGame;
 import id.zetminigames.mace.MaceGame;
 import id.zetminigames.pof.PofGame;
@@ -34,6 +35,7 @@ public class GameManager {
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 10;
     private static final long LOBBY_TIMEOUT_TICKS = 20L * 120;
+    private static final long BR_LOBBY_TIMEOUT_TICKS = 20L * 600;
 
     private final ZetMinigames plugin;
     private final Map<UUID, Lobby> lobbies = new HashMap<>();
@@ -57,7 +59,7 @@ public class GameManager {
         int min = settings.type.min;
         int max = settings.type.max;
         int lowest = settings.testMode ? settings.type.testMin : min;
-        if (total < lowest || total > max) {
+        if (settings.type != GameType.BATTLEROYALE && (total < lowest || total > max)) {
             return "Pemain harus " + lowest + "-" + max;
         }
         if (busy(host.getUniqueId())) return "Lu lagi di lobby/game lain.";
@@ -75,9 +77,12 @@ public class GameManager {
             lobbies.put(p.getUniqueId(), lobby);
         }
         lobby.timeout = Bukkit.getScheduler().runTaskLater(plugin,
-                () -> cancelLobby(lobby, "Lobby kadaluarsa."), LOBBY_TIMEOUT_TICKS);
+                () -> cancelLobby(lobby, "Lobby kadaluarsa."),
+                settings.type == GameType.BATTLEROYALE ? BR_LOBBY_TIMEOUT_TICKS : LOBBY_TIMEOUT_TICKS);
 
-        String detail = settings.type == GameType.MACE ? "Timer " + GameSettings.fmt(settings.maceSec) + " | Ronde " + settings.rounds
+        String detail = settings.type == GameType.BATTLEROYALE
+                ? "Solo | " + settings.type.min + "-" + settings.type.max + " pemain"
+                : settings.type == GameType.MACE ? "Timer " + GameSettings.fmt(settings.maceSec) + " | Ronde " + settings.rounds
                 : settings.type == GameType.DEATHSWAP
                 ? "TP " + GameSettings.fmt(settings.swapIntervalSec) + " | Ronde " + settings.rounds
                 : "Item " + GameSettings.fmt(settings.itemIntervalSec)
@@ -98,7 +103,7 @@ public class GameManager {
                     .append(Component.text("  ", NamedTextColor.GRAY))
                     .append(button("[TOLAK]", NamedTextColor.RED, this::leave, "Tolak")));
         }
-        if (lobby.ready.size() == lobby.invited.size()) startGame(lobby);
+        if (settings.type != GameType.BATTLEROYALE && lobby.ready.size() == lobby.invited.size()) startGame(lobby);
         return null;
     }
 
@@ -114,7 +119,7 @@ public class GameManager {
         }
         lobbyMsg(lobby, Component.text(p.getName() + " ready (" + lobby.ready.size() + "/" + lobby.invited.size() + ")",
                 NamedTextColor.GREEN));
-        if (lobby.ready.size() == lobby.invited.size()) startGame(lobby);
+        if (lobby.settings.type != GameType.BATTLEROYALE && lobby.ready.size() == lobby.invited.size()) startGame(lobby);
     }
 
     /** Tolak lobby / keluar lobby / menyerah di game. */
@@ -127,6 +132,11 @@ public class GameManager {
         Lobby lobby = lobbies.get(p.getUniqueId());
         if (lobby == null) {
             p.sendMessage(prefix().append(Component.text("Gak ada lobby/game.", NamedTextColor.RED)));
+            return;
+        }
+        if (lobby.settings.type == GameType.BATTLEROYALE && !lobby.host.equals(p.getUniqueId())) {
+            removeFromLobby(lobby, p.getUniqueId(), p.getName() + " keluar dari lobby.");
+            p.sendMessage(prefix().append(Component.text("Lu keluar dari lobby.", NamedTextColor.GRAY)));
             return;
         }
         cancelLobby(lobby, p.getName() + " keluar, lobby batal.");
@@ -173,6 +183,7 @@ public class GameManager {
         Match g = switch (lobby.settings.type) {
             case DEATHSWAP -> new DeathSwapGame(plugin, this, players, lobby.settings);
             case MACE -> new MaceGame(plugin, this, players, lobby.settings);
+            case BATTLEROYALE -> new BattleRoyaleGame(plugin, this, players, lobby.settings);
             default -> new PofGame(plugin, this, players, lobby.settings);
         };
         active.add(g);
@@ -183,6 +194,69 @@ public class GameManager {
             }
             unregister(g);
         }
+    }
+
+    public String invite(Player host, List<Player> picked) {
+        Lobby lobby = lobbies.get(host.getUniqueId());
+        if (lobby == null || !lobby.host.equals(host.getUniqueId())) return "Lu bukan host lobby.";
+        if (lobby.settings.testMode) return "Matiin MODE TES dulu buat ngundang pemain.";
+        if (picked.isEmpty()) return "Pilih minimal 1 pemain.";
+        int max = lobby.settings.type.max;
+        if (lobby.invited.size() + picked.size() > max) return "Maksimal " + max + " pemain.";
+        for (Player p : picked) {
+            if (!p.isOnline()) return p.getName() + " udah offline.";
+            if (busy(p.getUniqueId())) return p.getName() + " lagi di lobby/game lain.";
+        }
+        Component info = Component.text("Solo | " + lobby.settings.type.min + "-" + max + " pemain", NamedTextColor.GRAY);
+        for (Player p : picked) {
+            lobby.invited.add(p.getUniqueId());
+            lobbies.put(p.getUniqueId(), lobby);
+            p.sendMessage(prefix().append(Component.text(host.getName() + " ngajak main " + lobby.settings.type.label, NamedTextColor.YELLOW)));
+            p.sendMessage(prefix().append(info));
+            p.sendMessage(prefix()
+                    .append(button("[READY]", NamedTextColor.GREEN, this::ready, "Ready"))
+                    .append(Component.text("  ", NamedTextColor.GRAY))
+                    .append(button("[TOLAK]", NamedTextColor.RED, this::leave, "Tolak")));
+        }
+        return null;
+    }
+
+    public String startLobby(Player host) {
+        Lobby lobby = lobbies.get(host.getUniqueId());
+        if (lobby == null || !lobby.host.equals(host.getUniqueId())) return "Lu bukan host lobby.";
+        boolean test = lobby.settings.testMode;
+        if (test && lobby.invited.size() > 1) return "Mode tes cuma buat sendiri. Matiin MODE TES atau batalin undangan.";
+        int min = test ? lobby.settings.type.testMin : lobby.settings.type.min;
+        if (lobby.ready.size() < min) return "Minimal " + min + " pemain READY (sekarang " + lobby.ready.size() + ").";
+        for (UUID id : new ArrayList<>(lobby.invited)) {
+            if (lobby.ready.contains(id)) continue;
+            lobby.invited.remove(id);
+            lobbies.remove(id);
+            Player p = Bukkit.getPlayer(id);
+            if (p != null) p.sendMessage(prefix().append(Component.text("Game udah mulai tanpa lu.", NamedTextColor.GRAY)));
+        }
+        startGame(lobby);
+        return null;
+    }
+
+    /** Host Battle Royale: nyalain / matiin MODE TES. Return null kalau sukses, atau pesan error. */
+    public String toggleTestMode(Player host) {
+        Lobby lobby = lobbies.get(host.getUniqueId());
+        if (lobby == null || !lobby.host.equals(host.getUniqueId())) return "Lu bukan host lobby.";
+        if (lobby.settings.type != GameType.BATTLEROYALE) return "Cuma buat Battle Royale.";
+        if (!lobby.settings.testMode && lobby.invited.size() > 1) {
+            return "Mode tes cuma buat sendiri. Keluarin pemain lain dulu (atau batalin lobby).";
+        }
+        lobby.settings.testMode = !lobby.settings.testMode;
+        return null;
+    }
+
+    private void removeFromLobby(Lobby lobby, UUID id, String note) {
+        lobby.invited.remove(id);
+        lobby.ready.remove(id);
+        lobbies.remove(id);
+        Player host = Bukkit.getPlayer(lobby.host);
+        if (host != null) host.sendMessage(prefix().append(Component.text(note, NamedTextColor.GRAY)));
     }
 
     // ===================== GAME =====================
@@ -197,7 +271,12 @@ public class GameManager {
         Lobby l = lobbies.get(id);
         if (l != null) {
             Player p = Bukkit.getPlayer(id);
-            cancelLobby(l, (p != null ? p.getName() : "Pemain") + " keluar, lobby batal.");
+            String who = p != null ? p.getName() : "Pemain";
+            if (l.settings.type == GameType.BATTLEROYALE && !l.host.equals(id)) {
+                removeFromLobby(l, id, who + " keluar dari lobby.");
+                return;
+            }
+            cancelLobby(l, who + " keluar, lobby batal.");
         }
     }
 

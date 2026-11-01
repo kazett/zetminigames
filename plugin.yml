@@ -2,7 +2,7 @@ name: ZetMinigames
 version: ${project.version}
 main: id.zetminigames.ZetMinigames
 api-version: '1.21'
-description: Kumpulan minigame Zet (Pillar of Fortune, Deathswap)
+description: Kumpulan minigame Zet (Pillar of Fortune, Deathswap, Mace Roulette, Battle Royale)
 commands:
   panel:
     description: Buka panel games

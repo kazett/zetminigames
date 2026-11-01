@@ -202,6 +202,15 @@
       "chars": [
         "\ue020\ue021\ue022\ue023\ue024\ue025\ue026"
       ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_br.png",
+      "ascent": -4,
+      "height": 8,
+      "chars": [
+        "\ue040\ue041\ue042\ue043"
+      ]
     }
   ]
 }
