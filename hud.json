@@ -1,0 +1,207 @@
+{
+  "providers": [
+    {
+      "type": "space",
+      "advances": {
+        " ": 4,
+        "\uf800": -1,
+        "\uf820": 1,
+        "\uf801": -2,
+        "\uf821": 2,
+        "\uf802": -4,
+        "\uf822": 4,
+        "\uf803": -8,
+        "\uf823": 8,
+        "\uf804": -16,
+        "\uf824": 16,
+        "\uf805": -32,
+        "\uf825": 32,
+        "\uf806": -64,
+        "\uf826": 64,
+        "\uf807": -128,
+        "\uf827": 128,
+        "\uf808": -256,
+        "\uf828": 256,
+        "\uf809": -512,
+        "\uf829": 512
+      }
+    },
+    {
+      "type": "bitmap",
+      "file": "minecraft:font/ascii.png",
+      "ascent": -4,
+      "height": 8,
+      "chars": [
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        " !\"#$%&'()*+,-./",
+        "0123456789:;<=>?",
+        "@ABCDEFGHIJKLMNO",
+        "PQRSTUVWXYZ[\\]^_",
+        "`abcdefghijklmno",
+        "pqrstuvwxyz{|}~\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+        "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_panel.png",
+      "ascent": 10,
+      "height": 42,
+      "chars": [
+        "\ue000"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_skull.png",
+      "ascent": 8,
+      "height": 8,
+      "chars": [
+        "\ue001"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_item.png",
+      "ascent": -4,
+      "height": 8,
+      "chars": [
+        "\ue002"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_alive.png",
+      "ascent": -4,
+      "height": 8,
+      "chars": [
+        "\ue003"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_frame.png",
+      "ascent": 9,
+      "height": 10,
+      "chars": [
+        "\ue004"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_logo.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue006"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_banner.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue008"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_banner_round.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue00b"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_banner_draw.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue00c"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_winframe.png",
+      "ascent": 10,
+      "height": 12,
+      "chars": [
+        "\ue009"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_count.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue030\ue031\ue032\ue033\ue034"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_tpwarn.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue035\ue036\ue037\ue038\ue039"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_banner_go.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue03a"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_banner_swap.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue03b"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_banner_elim.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue03c"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_bar.png",
+      "ascent": -16,
+      "height": 5,
+      "chars": [
+        "\ue010\ue011\ue012\ue013\ue014\ue015\ue016\ue017\ue018\ue019\ue01a"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/hud_icons.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue020\ue021\ue022\ue023\ue024\ue025\ue026"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+# ===== Resource pack (HUD custom) =====
+# Isi url + sha1 dari hasil build GitHub Actions (lihat project.md).
+# Kalau url kosong, HUD custom mati dan pemain cuma dapat actionbar biasa.
+resource-pack:
+  url: ""
+  sha1: ""
+  required: true
+  prompt: "Resource pack ZetMinigames"
+
+# ===== Tuning HUD =====
+hud:
+  # Lebar advance kepala pemain (pixel). Kalau tanda X gak pas nutup kepala, coba 8 / 9 / 10.
+  head-advance: 8
+  # Lebar satu slot kepala (frame 10px + jarak). Minimal 10.
+  slot-width: 11

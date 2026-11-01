@@ -1,0 +1,18 @@
+name: ZetMinigames
+version: ${project.version}
+main: id.zetminigames.ZetMinigames
+api-version: '1.21'
+description: Kumpulan minigame Zet (Pillar of Fortune, Deathswap)
+commands:
+  panel:
+    description: Buka panel games
+    usage: /panel
+    permission: pof.use
+  pof:
+    description: Command internal minigame (ready, leave, cancel)
+    usage: /pof <ready|leave|cancel>
+    permission: pof.use
+permissions:
+  pof.use:
+    description: Boleh main minigame
+    default: true
