@@ -71,10 +71,17 @@ public class MaceGame implements Match {
     private static final int PLATFORM_R = 14;
     private static final int COUNTDOWN_SEC = 5;
     private static final int READY_SEC = 3;
+    /** Waktu siap-siap (detik) sebelum countdown 5..1: pemain udah di slot tapi belum bisa gerak (nunggu semua kelar load). */
+    private static final int PREP_SEC = 10;
     private static final int SPIN_TICKS = 70;
     private static final double RING_SPACING = 2.5;
     /** Sprite mace miring 45 derajat: kepala mace nunjuk ke yaw (rotasi - 135). 135 bikin kepala nunjuk pas ke pemain. Ubah kalau masih meleset. */
     private static final float POINT_OFFSET = 135f;
+
+    /** Detik sampai roulette mulai (siap-siap + countdown), 0 kalau udah jalan. Buat HUD. */
+    private int prepLeft;
+    /** Waktu mulai fase jalan (ms), buat jam game di HUD. */
+    private long runStart;
 
     private final ZetMinigames plugin;
     private final GameManager manager;
@@ -246,7 +253,7 @@ public class MaceGame implements Match {
         hudTask = Bukkit.getScheduler().runTaskTimer(plugin, this::updateHud, 5L, 5L);
         tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 5L, 5L);
 
-        countdown(COUNTDOWN_SEC, this::startSpin);
+        readyThenCountdown();
 
         if (prev != null) {
             Bukkit.getScheduler().runTaskLater(plugin, () -> deleteWorld(prev), 20L);
@@ -309,6 +316,7 @@ public class MaceGame implements Match {
             if (state == State.ENDED) { self[0].cancel(); return; }
             if (c[0] > 0) {
                 int n = c[0];
+                if (phase == Phase.INTRO) { prepLeft = n; updateHud(); }
                 for (Player p : participants()) {
                     CustomTitle.show(plugin, p, CustomTitle.count(n),
                             Component.text(String.valueOf(n), NamedTextColor.YELLOW, TextDecoration.BOLD),
@@ -325,9 +333,37 @@ public class MaceGame implements Match {
         temp.add(self[0]);
     }
 
+    /** Siap-siap PREP_SEC detik (banner BERSIAP + HUD "MULAI Ns"), baru countdown 5..1 lalu roulette. */
+    private void readyThenCountdown() {
+        prepLeft = PREP_SEC + COUNTDOWN_SEC;
+        updateHud();
+        for (Player p : participants()) {
+            CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_READY),
+                    Component.text("BERSIAP", NamedTextColor.AQUA, TextDecoration.BOLD),
+                    Component.text("Tunggu semua", NamedTextColor.GRAY),
+                    Title.Times.times(Duration.ZERO, Duration.ofSeconds(PREP_SEC), Duration.ZERO));
+        }
+        BukkitTask[] self = new BukkitTask[1];
+        int[] w = {PREP_SEC};
+        self[0] = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (state == State.ENDED) { self[0].cancel(); return; }
+            if (w[0] > 0) {
+                prepLeft = w[0] + COUNTDOWN_SEC;
+                updateHud();
+                w[0]--;
+            } else {
+                self[0].cancel();
+                countdown(COUNTDOWN_SEC, this::startSpin);
+            }
+        }, 10L, 20L);
+        temp.add(self[0]);
+    }
+
     /** Roulette: mace muter lalu berhenti ngarah ke 1 pemain. */
     private void startSpin() {
         if (state == State.ENDED) return;
+        if (state == State.COUNTDOWN) runStart = System.currentTimeMillis();
+        prepLeft = 0;
         state = State.RUNNING;
         phase = Phase.SPIN;
         holder = null;
@@ -424,7 +460,6 @@ public class MaceGame implements Match {
         if (phase == Phase.ATTEMPT && System.currentTimeMillis() >= deadline) {
             resolve(killed ? "Waktu habis" : "Waktu habis, gak ada yang mati");
         }
-        sendHud();
     }
 
     /** Selesaiin percobaan: balik ke lingkaran, roulette lagi. */
@@ -462,21 +497,13 @@ public class MaceGame implements Match {
 
     private String topText() {
         return switch (phase) {
-            case INTRO, READY -> "SIAP";
+            case INTRO, READY -> prepLeft > 0 ? "MULAI " + prepLeft + "s" : "SIAP";
             case SPIN -> "ROULETTE";
             case ATTEMPT -> "MACE " + Math.max(0, (int) Math.ceil((deadline - System.currentTimeMillis()) / 1000.0)) + "s";
             case RESOLVE -> "RESET";
         };
     }
 
-    private void sendHud() {
-        Component full = Component.text(topText(), NamedTextColor.YELLOW)
-                .append(Component.text("  |  ", NamedTextColor.DARK_GRAY))
-                .append(Component.text(alive.size() + "/" + roundOrder.size(), NamedTextColor.GREEN));
-        for (Player p : participants()) {
-            if (!plugin.packReady(p)) p.sendActionBar(full);
-        }
-    }
 
     private void updateHud() {
         if (bossBar == null) return;
@@ -490,11 +517,14 @@ public class MaceGame implements Match {
             al[i] = alive.contains(id);
         }
         double frac = 0.0;
-        if (state == State.RUNNING && phase == Phase.ATTEMPT) {
+        if (prepLeft > 0) {
+            frac = prepLeft / (double) (PREP_SEC + COUNTDOWN_SEC);
+        } else if (state == State.RUNNING && phase == Phase.ATTEMPT) {
             frac = (System.currentTimeMillis() - phaseStart) / (double) Math.max(1L, deadline - phaseStart);
         }
         bossBar.name(Hud.buildMace(hs, al, alive.size(), n, topText(), frac,
-                plugin.headAdvance(), plugin.slotWidth(), roundLabel()));
+                plugin.headAdvance(), plugin.slotWidth(), roundLabel(),
+                state == State.RUNNING ? (int) ((System.currentTimeMillis() - runStart) / 1000) : 0));
     }
 
     private void hideHud() {

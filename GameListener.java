@@ -54,7 +54,8 @@ public class GameListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent e) {
-        if (manager.gameOf(e.getPlayer().getUniqueId()) != null) e.setCancelled(true);
+        Match g = manager.gameOf(e.getPlayer().getUniqueId());
+        if (g != null && !g.allowDrop()) e.setCancelled(true);
     }
 
     @EventHandler(ignoreCancelled = true)

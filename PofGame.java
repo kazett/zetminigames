@@ -55,6 +55,11 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /** Satu match Pillar of Fortune (satu world void sendiri). */
 public class PofGame implements Match {
+
+    @Override
+    public boolean allowDrop() {
+        return true;
+    }
     public enum State { COUNTDOWN, RUNNING, ENDED }
 
     private record Hit(UUID attacker, long at) {}
@@ -265,7 +270,7 @@ public class PofGame implements Match {
                         for (Player p : participants()) {
                             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_READY),
                                     Component.text("BERSIAP", NamedTextColor.AQUA, TextDecoration.BOLD),
-                                    Component.text("Tunggu semua siap", NamedTextColor.GRAY),
+                                    Component.text("Tunggu semua", NamedTextColor.GRAY),
                                     Title.Times.times(Duration.ZERO, Duration.ofSeconds(READY_SEC), Duration.ZERO));
                         }
                     }
@@ -336,7 +341,7 @@ public class PofGame implements Match {
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1000), Duration.ofMillis(200)));
             p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
         }
-        if (map == PofMap.LAVA) msg(Component.text("Lava mulai naik! Makin lama makin cepat.", NamedTextColor.RED, TextDecoration.BOLD));
+        if (map == PofMap.LAVA) msg(Component.text("Lava mulai naik!", NamedTextColor.RED, TextDecoration.BOLD));
         tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
     }
 
@@ -357,7 +362,6 @@ public class PofGame implements Match {
             msg(Component.text("Border mengecil!", NamedTextColor.RED, TextDecoration.BOLD));
         }
         if (map == PofMap.LAVA) tickLava();
-        sendHud();
     }
 
     private PofMap chooseMap() {
@@ -487,39 +491,18 @@ public class PofGame implements Match {
         }
     }
 
-    /** Teks info lava buat actionbar (kosong kalau bukan map Lava Rising). */
-    private Component lavaText() {
-        if (map != PofMap.LAVA) return Component.empty();
-        int in = lavaNextIn();
-        Component c = Component.text("LAVA ", NamedTextColor.GOLD);
-        if (in < 0) return c.append(Component.text("MAKS", NamedTextColor.RED));
-        return c.append(Component.text("+" + lavaStep(elapsed)[1] + " ", NamedTextColor.RED))
-                .append(Component.text(Hud.clock(in), NamedTextColor.WHITE));
-    }
-
     /**
-     * Actionbar. Pemain tanpa pack: HUD teks lengkap. Pemain dengan pack: HUD ada di bossbar custom
-     * (timer + border sudah di sana), actionbar cuma dipakai buat hitung mundur lava (map Lava Rising).
+     * HUD bawah (di atas hotbar) buat map Lava Rising: sisa detik sampai lava naik + jumlah lapisan.
+     * Dikirim lewat actionbar tapi isinya glyph font custom (butuh pack), jadi pemain tanpa pack gak dapat apa-apa.
      */
-    private void sendHud() {
-        Component sep = Component.text("  |  ", NamedTextColor.DARK_GRAY);
-        Component border = shrinking
-                ? Component.text("BORDER MENGECIL", NamedTextColor.RED)
-                : Component.text("BORDER ", NamedTextColor.RED)
-                        .append(Component.text((settings.shrinkStartSec - elapsed) + "s", NamedTextColor.WHITE));
-        Component full = Component.text("NEXT ITEM ", NamedTextColor.YELLOW)
-                .append(Component.text(nextItem + "s", NamedTextColor.WHITE))
-                .append(sep)
-                .append(border);
-        if (map == PofMap.LAVA) full = full.append(sep).append(lavaText());
-        full = full.append(sep)
-                .append(Component.text(Hud.clock(elapsed), NamedTextColor.AQUA))
-                .append(sep)
-                .append(Component.text(alive.size() + "/" + roundOrder.size(), NamedTextColor.GREEN));
-        Component lavaOnly = lavaText();
+    private void sendLavaBar() {
+        if (map != PofMap.LAVA || state != State.RUNNING) return;
+        int in = lavaNextIn();
+        String t = in < 0 ? "LAVA MAX" : "LAVA +" + lavaStep(elapsed)[1] + "  " + Hud.clock(in);
+        int color = in < 0 ? 0xFF5555 : in <= 5 ? 0xFFD23C : 0xFF8A3C;
+        Component bar = Hud.buildBottom(t, color);
         for (Player p : participants()) {
-            if (!plugin.packReady(p)) p.sendActionBar(full);
-            else if (map == PofMap.LAVA) p.sendActionBar(lavaOnly);
+            if (plugin.packReady(p)) p.sendActionBar(bar);
         }
     }
 
@@ -546,6 +529,7 @@ public class PofGame implements Match {
                 Math.max(0, settings.shrinkStartSec - elapsed), shrinking, roundLabel(),
                 state == State.RUNNING ? elapsed : 0,
                 readyLeft > 0 ? "MULAI " + readyLeft + "s" : null));
+        sendLavaBar();
     }
 
     private void hideHud() {

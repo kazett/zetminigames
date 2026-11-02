@@ -238,3 +238,23 @@ Perlu build ulang pack (ada ikon jam baru di `hud_br.png`): update `resource-pac
 - HUD zona sekarang cuma `ZONA m:ss` (menunggu) / `MENGECIL m:ss`, tanpa "ZONA 2/6".
 - **Deathswap**: sama kayak POF, pemain ditahan `READY_SEC` (10 detik, actionbar "BERSIAP") di spawn sebelum countdown 5..1, total 15 detik. Timer swap baru jalan setelah "MULAI!".
 - Siap-siap (POF + Deathswap) sekarang full custom: banner BERSIAP (`hud_banner_ready.png`, glyph \uE03D, tampil 10 detik) + HUD bossbar baris atas "MULAI 15s" dengan bar kuning menyusut. Bukan actionbar lagi. Pack berubah -> update sha1.
+
+## v18
+- Drop item (Q / dari inventory) sekarang boleh di POF, Deathswap, dan Battle Royale (`Match.allowDrop()`, `GameListener.onDrop`). Mace Roulette tetap gak boleh drop.
+- Semua actionbar teks dihapus (POF, Deathswap, Mace, BR). HUD full lewat bossbar + resource pack. Pemain yang pack-nya belum ke-load gak dapat tampilan pengganti.
+- POF map Lava Rising: hitung mundur lava + jumlah lapisan pindah ke HUD bawah (di atas hotbar): panel kecil + ikon api, font `zetminigames:hud_bottom` (`hud_bottom.json`, `hud_bottom.png`, `hud_lava.png`, glyph \uE060/\uE061). Dikirim lewat actionbar tapi isinya glyph pack (`Hud.buildBottom`), jadi pemain tanpa pack gak dapat apa-apa. Pack berubah -> update sha1.
+- Mace Roulette: siap-siap 10 detik (banner BERSIAP + HUD "MULAI Ns" + bar kuning) lalu countdown 5..1, baru roulette. `PREP_SEC` di MaceGame.java.
+- Deathswap + Mace: jam game (ikon jam + m:ss) di baris 4 kanan HUD, kayak POF dan BR.
+- `build-pack.sh`: `hud_banner_ready` ditambah ke daftar file pack (sebelumnya hilang, bikin font HUD kotak-kotak).
+- BELUM DICOMPILE / DITES. Pack berubah (aset HUD bawah baru + fix hud_banner_ready): update `resource-pack.sha1` di config.yml.
+
+## v19
+- HUD Battle Royale dirapihin: panel atas jadi 3 baris (fase zona + timer, PVP + jumlah hidup, bar waktu) pakai `hud_panel_br.png` (glyph \uE00D, `Hud.PANEL_BR`). Baris 4 (panah + jarak zona + kill) pindah ke HUD bawah di atas hotbar (`Hud.buildBrBottom`, font `hud_bottom`). Actionbar-nya isi glyph pack, bukan teks biasa.
+- Font `hud_bottom` sekarang punya: panel, ikon api (lava POF), panah (`hud_arrows`), ikon BR (`hud_br`). Panel bawah tampil netral (biru gelap) buat lava dan BR.
+- Teks in-game disingkat: "TEPI 12m" / "LUAR 12m", "PVP ON", "FINAL", "Zona mengecil: 300", "Zona mengecil dalam 30s", "PVP aktif dalam 10s", "Siap-siap 30 detik.", "Cari loot", "Jebak lawan", "Tunggu semua", "Lava mulai naik!".
+- Pack dan jar dibuild otomatis lewat GitHub Actions: tinggal push, lalu ambil SHA1 dari deskripsi Release "Latest build".
+- BELUM DICOMPILE / DITES di game (sintaks sudah dicek pakai javac, library Paper gak ada di sini).
+
+## v20
+- Semua teks /panel (Panels.java) dan pesan lobby (GameManager.java) disingkat: deskripsi game 1-3 kata, label setting pendek ("Swap (min 10s)", "Timer (min 5s)", "Speed border", "Stop kalau pasti menang"), judul dialog "Setting" / "Undang", pesan error "Item salah" / "Border salah" / "Swap min 10s".
+- Resource pack gak berubah dari v19.

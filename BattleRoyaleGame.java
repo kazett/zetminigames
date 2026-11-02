@@ -72,6 +72,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class BattleRoyaleGame implements Match, Listener {
+
+    @Override
+    public boolean allowDrop() {
+        return true;
+    }
     private enum State { LOADING, READY, COUNTDOWN, RUNNING, ENDED }
 
     private static final int COUNTDOWN_SEC = 5;
@@ -153,7 +158,7 @@ public class BattleRoyaleGame implements Match, Listener {
     public void testFinish(Player p) {
         if (!testMode) return;
         if (state == State.LOADING) {
-            p.sendMessage(Component.text("Arena masih disiapin, tunggu bentar.", NamedTextColor.RED));
+            p.sendMessage(Component.text("Arena belum siap.", NamedTextColor.RED));
             return;
         }
         if (state == State.ENDED) return;
@@ -395,7 +400,7 @@ public class BattleRoyaleGame implements Match, Listener {
 
     private void readyPhase() {
         int sec = cfgInt("ready-seconds", 30);
-        msg(Component.text("Kalian punya " + sec + " detik di platform buat siap-siap.", NamedTextColor.YELLOW));
+        msg(Component.text("Siap-siap " + sec + " detik.", NamedTextColor.YELLOW));
         BukkitTask[] self = new BukkitTask[1];
         int[] left = {sec};
         final int total = sec;
@@ -421,11 +426,7 @@ public class BattleRoyaleGame implements Match, Listener {
 
     private void readyHud(Player p, int left, int total) {
         String timer = clock(left);
-        if (!plugin.packReady(p)) {
-            p.sendActionBar(Component.text("BERSIAP  ", NamedTextColor.YELLOW, TextDecoration.BOLD)
-                    .append(Component.text("Countdown mulai dalam " + timer, NamedTextColor.WHITE)));
-            return;
-        }
+        if (!plugin.packReady(p)) return;
         UUID id = p.getUniqueId();
         BossBar bar = bars.get(id);
         if (bar == null) {
@@ -435,7 +436,7 @@ public class BattleRoyaleGame implements Match, Listener {
         }
         bar.name(Hud.buildBr(new Hud.BrData("BERSIAP", 0xFFD23C, timer, left / (double) Math.max(1, total),
                 "PVP " + Hud.fmtTime(pvpDelaySec()), 0xFFAA55, alive.size(), Math.max(startCount, alive.size()),
-                0, "DI PLATFORM", 0x55FF55, 0, testMode)));
+                0, "", 0x55FF55, 0, testMode)));
     }
 
     private void startCountdown() {
@@ -514,7 +515,7 @@ public class BattleRoyaleGame implements Match, Listener {
         releaseAt = System.currentTimeMillis();
         sky(false);
         pvpOn = pvpDelay <= 0;
-        if (!pvpOn) msg(Component.text("PVP aktif dalam " + pvpDelay + " detik", NamedTextColor.YELLOW));
+        if (!pvpOn) msg(Component.text("PVP aktif dalam " + pvpDelay + "s", NamedTextColor.YELLOW));
         for (Player p : participants()) {
             UUID id = p.getUniqueId();
             if (!alive.contains(id)) continue;
@@ -522,7 +523,7 @@ public class BattleRoyaleGame implements Match, Listener {
             p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, SLOW_FALL_TICKS, 0, false, false));
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_GO),
                     Component.text("MULAI!", NamedTextColor.GREEN, TextDecoration.BOLD),
-                    Component.text("Turun dan cari loot", NamedTextColor.GRAY),
+                    Component.text("Cari loot", NamedTextColor.GRAY),
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1200), Duration.ofMillis(300)));
             p.playSound(p.getLocation(), Sound.BLOCK_GLASS_BREAK, 1f, 1f);
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
@@ -567,7 +568,7 @@ public class BattleRoyaleGame implements Match, Listener {
                 return new Phase("MENGECIL", 0xFF5555, left, left / (double) Math.max(1, shrinkLen[i]), true, false);
             }
         }
-        return new Phase("ZONA FINAL", 0xFF5555, 0, 0.0, false, true);
+        return new Phase("FINAL", 0xFF5555, 0, 0.0, false, true);
     }
 
     private void tick() {
@@ -586,14 +587,13 @@ public class BattleRoyaleGame implements Match, Listener {
                 long from = Math.round(wb.getSize());
                 wb.setSize(sizes[i], shrinkLen[i]);
                 Component big = Component.text("ZONA MENGECIL", NamedTextColor.RED, TextDecoration.BOLD);
-                Component small = Component.text(from + "x" + from + "  >  " + sizes[i] + "x" + sizes[i]
-                        + "  (" + Hud.fmtTime(shrinkLen[i]) + ")", NamedTextColor.YELLOW);
+                Component small = Component.text(from + " > " + sizes[i] + "  (" + Hud.fmtTime(shrinkLen[i]) + ")", NamedTextColor.YELLOW);
                 Title.Times times = Title.Times.times(Duration.ofMillis(150), Duration.ofMillis(2200), Duration.ofMillis(400));
                 for (Player p : participants()) {
                     p.showTitle(Title.title(big, small, times));
                     p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
                 }
-                msg(Component.text("Zona mengecil jadi " + sizes[i] + "x" + sizes[i], NamedTextColor.RED, TextDecoration.BOLD));
+                msg(Component.text("Zona mengecil: " + sizes[i], NamedTextColor.RED, TextDecoration.BOLD));
             }
 
             // peringatan sebelum zona mengecil (30s, 10s, lalu hitung mundur 5..1)
@@ -601,8 +601,7 @@ public class BattleRoyaleGame implements Match, Listener {
                 int i = nextShrink;
                 int left = shrinkAt[i] - sec;
                 if ((left == 30 || left == 10) && warned.add(i + ":" + left)) {
-                    msg(Component.text("Zona mengecil jadi " + sizes[i] + "x" + sizes[i] + " dalam " + left + " detik",
-                            NamedTextColor.YELLOW));
+                    msg(Component.text("Zona mengecil dalam " + left + "s", NamedTextColor.YELLOW));
                     for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
                 } else if (left >= 1 && left <= 5 && warned.add(i + ":" + left)) {
                     for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.6f);
@@ -617,7 +616,7 @@ public class BattleRoyaleGame implements Match, Listener {
                 }
             } else if (!pvpOn) {
                 if (pvpLeft == 10 && warned.add("pvp:10")) {
-                    msg(Component.text("PVP aktif dalam 10 detik", NamedTextColor.YELLOW));
+                    msg(Component.text("PVP aktif dalam 10s", NamedTextColor.YELLOW));
                 } else if (pvpLeft >= 1 && pvpLeft <= 5 && warned.add("pvp:" + pvpLeft)) {
                     for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.2f);
                 }
@@ -649,8 +648,8 @@ public class BattleRoyaleGame implements Match, Listener {
 
         boolean outside = edge < 0;
         int distColor = outside ? 0xFF5555 : edge < 15 ? 0xFFAA00 : 0x55FF55;
-        String distText = outside ? "LUAR ZONA " + (int) Math.ceil(-edge) + "m" : "TEPI ZONA " + (int) edge + "m";
-        String pvpText = pvpOn ? "PVP AKTIF" : "PVP " + Hud.fmtTime(pvpLeft);
+        String distText = outside ? "LUAR " + (int) Math.ceil(-edge) + "m" : "TEPI " + (int) edge + "m";
+        String pvpText = pvpOn ? "PVP ON" : "PVP " + Hud.fmtTime(pvpLeft);
         int pvpColor = pvpOn ? 0xFF5555 : 0xFFAA55;
         String timer = clock(sec);
         String phaseText = ph.last() ? ph.label() : ph.label() + " " + Hud.fmtTime(ph.remaining());
@@ -663,21 +662,12 @@ public class BattleRoyaleGame implements Match, Listener {
                 bars.put(id, bar);
                 p.showBossBar(bar);
             }
-            bar.name(Hud.buildBr(new Hud.BrData(phaseText, ph.color(), timer, ph.frac(), pvpText, pvpColor,
-                    alive.size(), Math.max(startCount, alive.size()), arrow, distText, distColor, killCount, testMode)));
+            Hud.BrData data = new Hud.BrData(phaseText, ph.color(), timer, ph.frac(), pvpText, pvpColor,
+                    alive.size(), Math.max(startCount, alive.size()), arrow, distText, distColor, killCount, testMode);
+            bar.name(Hud.buildBr(data));
+            p.sendActionBar(Hud.buildBrBottom(data));   // panah + jarak + kill di atas hotbar
             return;
         }
-
-        Component sep = Component.text("  |  ", NamedTextColor.DARK_GRAY);
-        Component line = Component.empty();
-        if (testMode) line = line.append(Component.text("[TES] ", NamedTextColor.GOLD, TextDecoration.BOLD));
-        line = line.append(Component.text(timer, NamedTextColor.WHITE))
-                .append(sep).append(Component.text(phaseText, TextColor.color(ph.color())))
-                .append(sep).append(Component.text(pvpText, TextColor.color(pvpColor)))
-                .append(sep).append(Component.text(Hud.ARROW_TEXT[arrow] + " " + distText, TextColor.color(distColor)))
-                .append(sep).append(Component.text(alive.size() + " hidup", NamedTextColor.GREEN))
-                .append(sep).append(Component.text(killCount + " kill", NamedTextColor.GOLD));
-        p.sendActionBar(line);
     }
 
     /** Dinding zona dari partikel merah, cuma digambar di dekat pemain biar ringan. */

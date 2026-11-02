@@ -50,6 +50,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class DeathSwapGame implements Match {
+
+    @Override
+    public boolean allowDrop() {
+        return true;
+    }
     private enum State { LOADING, COUNTDOWN, RUNNING, ENDED }
 
     private static final int COUNTDOWN_SEC = 5;
@@ -86,6 +91,8 @@ public class DeathSwapGame implements Match {
     private int nextSwap;
     /** Detik sampai game mulai (siap-siap + countdown), 0 kalau udah jalan. Buat HUD. */
     private int readyLeft;
+    /** Waktu mulai fase jalan (ms), buat jam game di HUD. */
+    private long runStart;
     private long periodStart;
     private BossBar bossBar;
 
@@ -247,7 +254,7 @@ public class DeathSwapGame implements Match {
                         for (Player p : participants()) {
                             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_READY),
                                     Component.text("BERSIAP", NamedTextColor.AQUA, TextDecoration.BOLD),
-                                    Component.text("Tunggu semua siap", NamedTextColor.GRAY),
+                                    Component.text("Tunggu semua", NamedTextColor.GRAY),
                                     Title.Times.times(Duration.ZERO, Duration.ofSeconds(READY_SEC), Duration.ZERO));
                         }
                     }
@@ -305,13 +312,14 @@ public class DeathSwapGame implements Match {
 
     private void startRunning() {
         state = State.RUNNING;
+        runStart = System.currentTimeMillis();
         readyLeft = 0;
         nextSwap = settings.swapIntervalSec;
         periodStart = System.currentTimeMillis();
         for (Player p : participants()) {
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_GO),
                     Component.text("MULAI!", NamedTextColor.GREEN, TextDecoration.BOLD),
-                    Component.text("Bunuh lewat jebakan", NamedTextColor.GRAY),
+                    Component.text("Jebak lawan", NamedTextColor.GRAY),
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1000), Duration.ofMillis(200)));
             p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
         }
@@ -328,7 +336,6 @@ public class DeathSwapGame implements Match {
         } else if (nextSwap <= WARN_SEC) {
             warn(nextSwap);
         }
-        sendHud();
     }
 
     private void warn(int seconds) {
@@ -386,15 +393,6 @@ public class DeathSwapGame implements Match {
         }
     }
 
-    private void sendHud() {
-        Component full = Component.text("SWAP TP ", NamedTextColor.YELLOW)
-                .append(Component.text(Hud.fmtTime(Math.max(0, nextSwap)), NamedTextColor.WHITE))
-                .append(Component.text("  |  ", NamedTextColor.DARK_GRAY))
-                .append(Component.text(alive.size() + "/" + roundOrder.size(), NamedTextColor.GREEN));
-        for (Player p : participants()) {
-            if (!plugin.packReady(p)) p.sendActionBar(full);
-        }
-    }
 
     private void updateHud() {
         if (bossBar == null) return;
@@ -415,7 +413,8 @@ public class DeathSwapGame implements Match {
         }
         bossBar.name(Hud.buildSwap(hs, al, alive.size(), n, Math.max(0, nextSwap), frac,
                 plugin.headAdvance(), plugin.slotWidth(), roundLabel(),
-                readyLeft > 0 ? "MULAI " + readyLeft + "s" : null));
+                readyLeft > 0 ? "MULAI " + readyLeft + "s" : null,
+                state == State.RUNNING ? (int) ((System.currentTimeMillis() - runStart) / 1000) : 0));
     }
 
     private void hideHud() {

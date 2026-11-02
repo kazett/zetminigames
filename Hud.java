@@ -24,6 +24,11 @@ public final class Hud {
     public static final String ICON_BORDER = "\uE00A";
     /** Font ketiga: ascii digambar di baris paling atas (sejajar baris kepala). */
     public static final Key FONT_TOP = Key.key("zetminigames", "hud_top");
+    /** Font HUD bawah (di atas hotbar, dikirim lewat actionbar): panel + ikon api + ascii normal. */
+    public static final Key FONT_BOTTOM = Key.key("zetminigames", "hud_bottom");
+    public static final String BOTTOM_PANEL = "\uE060";
+    public static final String ICON_LAVA = "\uE061";
+    public static final int BOTTOM_W = 120;
     // ikon Battle Royale (hud_br.png)
     public static final String ICON_ZONE = "\uE040";
     public static final String ICON_PVP = "\uE041";
@@ -35,6 +40,8 @@ public final class Hud {
     public static final String[] ARROW_TEXT = {"\u2191", "\u2197", "\u2192", "\u2198", "\u2193", "\u2199", "\u2190", "\u2196"};
 
     public static final String PANEL = "\uE000";
+    /** Panel Battle Royale: 3 baris (tanpa baris border). */
+    public static final String PANEL_BR = "\uE00D";
     public static final String SKULL = "\uE001";
     public static final String FRAME = "\uE004";
     public static final String LOGO = "\uE006";
@@ -94,16 +101,17 @@ public final class Hud {
 
     public static Component buildSwap(List<Component> heads, boolean[] alive, int aliveCount, int total,
                                       int swapSec, double frac, int headAdv, int slot, String roundLabel,
-                                      String topOverride) {
+                                      String topOverride, int clockSec) {
         return compose(heads, alive, aliveCount, total,
                 topOverride != null ? topOverride : "SWAP TP " + fmtTime(swapSec), frac, headAdv, slot,
-                0, false, roundLabel, false, -1);
+                0, false, roundLabel, false, clockSec);
     }
 
     public static Component buildMace(List<Component> heads, boolean[] alive, int aliveCount, int total,
-                                      String topText, double frac, int headAdv, int slot, String roundLabel) {
+                                      String topText, double frac, int headAdv, int slot, String roundLabel,
+                                      int clockSec) {
         return compose(heads, alive, aliveCount, total, topText, frac, headAdv, slot,
-                0, false, roundLabel, false, -1);
+                0, false, roundLabel, false, clockSec);
     }
 
     private static Component compose(List<Component> heads, boolean[] alive, int aliveCount, int total,
@@ -199,9 +207,9 @@ public final class Hud {
      */
     public static Component buildBr(BrData d) {
         Row r = new Row();
-        r.glyph(PANEL, PANEL_W + 1);
+        r.glyph(PANEL_BR, PANEL_W + 1);
 
-        // Baris 1 (font atas)
+        // Baris 1 (font atas): fase zona + timer game
         r.shiftTo(6);
         r.glyph(ICON_ZONE, GLYPH8_ADV, FONT_TOP);
         r.shift(2);
@@ -209,7 +217,7 @@ public final class Hud {
         r.shiftTo(PANEL_W - 6 - width(d.timer()));
         r.text(d.timer(), TextColor.color(0xFFFFFF), FONT_TOP);
 
-        // Baris 2 (font utama)
+        // Baris 2 (font utama): PVP + jumlah hidup
         r.shiftTo(6);
         r.glyph(ICON_PVP, GLYPH8_ADV);
         r.shift(2);
@@ -235,20 +243,41 @@ public final class Hud {
             r.shift(-1);
         }
 
-        // Baris 4 (font bawah): panah + jarak, kill di kanan
+        r.shiftTo(PANEL_W + 1);
+        return r.out.shadowColor(ShadowColor.none());
+    }
+
+    /** HUD bawah Battle Royale (di atas hotbar): panah + jarak ke zona di kiri, jumlah kill di kanan. */
+    public static Component buildBrBottom(BrData d) {
+        Row r = new Row();
+        r.glyph(BOTTOM_PANEL, BOTTOM_W + 1, FONT_BOTTOM);
         r.shiftTo(6);
         int a = Math.floorMod(d.arrow(), 8);
-        out(r, Component.text(String.valueOf((char) (ARROW_BASE + a)), TextColor.color(d.distColor())).font(FONT_LOW), GLYPH8_ADV);
+        r.raw(Component.text(String.valueOf((char) (ARROW_BASE + a)), TextColor.color(d.distColor())).font(FONT_BOTTOM), GLYPH8_ADV);
         r.shift(2);
-        r.text(d.distText(), TextColor.color(d.distColor()), FONT_LOW);
+        r.text(d.distText(), TextColor.color(d.distColor()), FONT_BOTTOM);
         String kills = String.valueOf(d.kills());
-        int kx = PANEL_W - 7 - width(kills);
-        r.shiftTo(kx - 2 - GLYPH8_ADV);
-        r.glyph(ICON_KILLS, GLYPH8_ADV, FONT_LOW);
+        r.shiftTo(BOTTOM_W - 6 - width(kills) - 2 - GLYPH8_ADV);
+        r.glyph(ICON_KILLS, GLYPH8_ADV, FONT_BOTTOM);
         r.shift(2);
-        r.text(kills, TextColor.color(0xFFFFFF), FONT_LOW);
+        r.text(kills, TextColor.color(0xFFFFFF), FONT_BOTTOM);
+        r.shiftTo(BOTTOM_W + 1);
+        return r.out.shadowColor(ShadowColor.none());
+    }
 
-        r.shiftTo(PANEL_W + 1);
+    /**
+     * HUD bawah (di atas hotbar): panel kecil + ikon api + teks berwarna, rata tengah.
+     * Dikirim lewat actionbar, tapi isinya glyph font custom dari resource pack (bukan teks actionbar biasa).
+     */
+    public static Component buildBottom(String text, int color) {
+        Row r = new Row();
+        r.glyph(BOTTOM_PANEL, BOTTOM_W + 1, FONT_BOTTOM);
+        int content = GLYPH8_ADV + 3 + width(text);
+        r.shiftTo(Math.max(4, (BOTTOM_W - content) / 2));
+        r.glyph(ICON_LAVA, GLYPH8_ADV, FONT_BOTTOM);
+        r.shift(3);
+        r.text(text, TextColor.color(color), FONT_BOTTOM);
+        r.shiftTo(BOTTOM_W + 1);
         return r.out.shadowColor(ShadowColor.none());
     }
 

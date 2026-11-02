@@ -61,6 +61,15 @@
     },
     {
       "type": "bitmap",
+      "file": "zetminigames:font/hud_panel_br.png",
+      "ascent": 10,
+      "height": 34,
+      "chars": [
+        "\ue00d"
+      ]
+    },
+    {
+      "type": "bitmap",
       "file": "zetminigames:font/hud_skull.png",
       "ascent": 8,
       "height": 8,

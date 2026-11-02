@@ -34,4 +34,6 @@ public interface Match {
     default void onAttack(Player attacker, EntityDamageByEntityEvent e) {}
     default void onSwing(Player p) {}
     default void onLaunch(Player shooter, ProjectileLaunchEvent e) {}
+    /** Boleh drop item (Q / dari inventory)? Default gak boleh. POF, Deathswap, Battle Royale override jadi true. */
+    default boolean allowDrop() { return false; }
 }

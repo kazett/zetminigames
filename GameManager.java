@@ -91,7 +91,7 @@ public class GameManager {
                 + " | " + (settings.map == null ? "Random" : settings.map.label);
         Component info = Component.text(detail, NamedTextColor.GRAY);
 
-        host.sendMessage(prefix().append(Component.text("Lobby dibuat. Tunggu READY.", NamedTextColor.YELLOW)));
+        host.sendMessage(prefix().append(Component.text("Lobby dibuat.", NamedTextColor.YELLOW)));
         host.sendMessage(prefix().append(info));
         host.sendMessage(prefix().append(button("[BATAL]", NamedTextColor.RED, this::cancel, "Batal")));
 
@@ -136,7 +136,7 @@ public class GameManager {
         }
         if (lobby.settings.type == GameType.BATTLEROYALE && !lobby.host.equals(p.getUniqueId())) {
             removeFromLobby(lobby, p.getUniqueId(), p.getName() + " keluar dari lobby.");
-            p.sendMessage(prefix().append(Component.text("Lu keluar dari lobby.", NamedTextColor.GRAY)));
+            p.sendMessage(prefix().append(Component.text("Keluar lobby.", NamedTextColor.GRAY)));
             return;
         }
         cancelLobby(lobby, p.getName() + " keluar, lobby batal.");
@@ -175,7 +175,7 @@ public class GameManager {
         }
         if (players.size() < (lobby.settings.testMode ? lobby.settings.type.testMin : lobby.settings.type.min)) {
             for (Player p : players) {
-                p.sendMessage(prefix().append(Component.text("Ada pemain offline, game batal.", NamedTextColor.RED)));
+                p.sendMessage(prefix().append(Component.text("Ada yang offline, batal.", NamedTextColor.RED)));
             }
             return;
         }
@@ -233,7 +233,7 @@ public class GameManager {
             lobby.invited.remove(id);
             lobbies.remove(id);
             Player p = Bukkit.getPlayer(id);
-            if (p != null) p.sendMessage(prefix().append(Component.text("Game udah mulai tanpa lu.", NamedTextColor.GRAY)));
+            if (p != null) p.sendMessage(prefix().append(Component.text("Game udah mulai.", NamedTextColor.GRAY)));
         }
         startGame(lobby);
         return null;

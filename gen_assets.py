@@ -46,6 +46,11 @@ d.line([(5, 12), (144, 12)], fill=(42, 48, 84, 255))           # garis pemisah k
 d.line([(5, 32), (144, 32)], fill=(42, 48, 84, 255))           # garis pemisah bar / border
 d.line([(10, 0), (139, 0)], fill=(255, 214, 60, 255))          # aksen emas tipis di atas
 p.save("hud_panel.png")
+# panel Battle Royale: 3 baris aja (tanpa baris border), baris ke-4 pindah ke HUD bawah
+pb = panel(150, 34, (28, 32, 58, 245), (12, 14, 28, 245), (74, 86, 136, 255), hl=(52, 60, 102, 255))
+ImageDraw.Draw(pb).line([(5, 12), (144, 12)], fill=(42, 48, 84, 255))
+ImageDraw.Draw(pb).line([(10, 0), (139, 0)], fill=(255, 214, 60, 255))
+pb.save("hud_panel_br.png")
 ring(10, 10, [(96, 108, 158, 255)]).save("hud_frame.png")
 
 skull = sprite(["........", ".XXXXXX.", "XXXXXXXX", "XooXXooX", "XooXXooX", "XXXooXXX", ".XXXXXX.", "..X.X.X."],
@@ -248,7 +253,7 @@ blank = "\u0000" * 16
 ascii_rows = [blank, blank, " !\"#$%&'()*+,-./", "0123456789:;<=>?", "@ABCDEFGHIJKLMNO", "PQRSTUVWXYZ[\\]^_",
               "`abcdefghijklmno", "pqrstuvwxyz{|}~\u0000"] + [blank] * 8
 prov = [space, {"type": "bitmap", "file": "minecraft:font/ascii.png", "ascent": -4, "height": 8, "chars": ascii_rows},
-        bm("hud_panel", 10, 42, ["\ue000"]), bm("hud_skull", 8, 8, ["\ue001"]), bm("hud_item", -4, 8, ["\ue002"]),
+        bm("hud_panel", 10, 42, ["\ue000"]), bm("hud_panel_br", 10, 34, ["\ue00d"]), bm("hud_skull", 8, 8, ["\ue001"]), bm("hud_item", -4, 8, ["\ue002"]),
         bm("hud_alive", -4, 8, ["\ue003"]), bm("hud_frame", 9, 10, ["\ue004"]), bm("hud_logo", 7, 8, ["\ue006"]),
         bm("hud_banner", 12, 28, ["\ue008"]), bm("hud_banner_round", 12, 28, ["\ue00b"]), bm("hud_banner_draw", 12, 28, ["\ue00c"]), bm("hud_winframe", 10, 12, ["\ue009"]),
         bm("hud_count", 12, 28, ["".join(chr(0xE030 + i) for i in range(5))]),
@@ -269,4 +274,16 @@ top = [{"type": "space", "advances": {" ": 4}},
        {"type": "bitmap", "file": "minecraft:font/ascii.png", "ascent": 8, "height": 8, "chars": ascii_rows},
        bm("hud_br", 8, 8, ["".join(chr(0xE040 + i) for i in range(len(BR_ICONS)))])]
 json.dump({"providers": top}, open("hud_top.json", "w"), indent=2)
+# ================= HUD bawah (di atas hotbar, lewat actionbar + font custom) =================
+# Panel kecil + ikon + teks. Dipakai buat lava POF dan jarak zona / kill Battle Royale.
+# Font `hud_bottom` (ascii ascent 7 = posisi teks normal).
+panel(120, 13, (28, 32, 58, 245), (12, 14, 28, 245), (74, 86, 136, 255), hl=(52, 60, 102, 255)).save("hud_bottom.png")
+sprite(["...X....", "..XX....", "..XXX...", ".XXXXX..", ".XXYYX..", "XXXYYXX.", "XXYYYXX.", ".XXXXX.."],
+       {"X": (255, 120, 40, 255), "Y": (255, 214, 60, 255)}).save("hud_lava.png")
+bottom = [space,
+          {"type": "bitmap", "file": "minecraft:font/ascii.png", "ascent": 7, "height": 8, "chars": ascii_rows},
+          bm("hud_bottom", 10, 13, ["\ue060"]), bm("hud_lava", 7, 8, ["\ue061"]),
+          bm("hud_arrows", 7, 8, ["".join(chr(0xE050 + i) for i in range(8))]),
+          bm("hud_br", 7, 8, ["".join(chr(0xE040 + i) for i in range(len(BR_ICONS)))])]
+json.dump({"providers": bottom}, open("hud_bottom.json", "w"), indent=2)
 print("ok")
