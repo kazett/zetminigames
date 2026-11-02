@@ -311,7 +311,7 @@ public class PofGame implements Match {
 
     private String roundSubtitle() {
         if (bonus) return "BONUS MATCH";
-        String r = settings.rounds > 1 ? "Round " + roundNo + "/" + settings.rounds : "Get ready!";
+        String r = settings.rounds > 1 ? "Ronde " + roundNo + "/" + settings.rounds : "Siap!";
         return map != null ? r + " | " + map.label : r;
     }
 
@@ -530,7 +530,7 @@ public class PofGame implements Match {
                 plugin.headAdvance(), plugin.slotWidth(),
                 Math.max(0, settings.shrinkStartSec - elapsed), shrinking, roundLabel(),
                 state == State.RUNNING ? elapsed : 0,
-                readyLeft > 0 ? "START " + readyLeft + "s" : null));
+                readyLeft > 0 ? "MULAI " + readyLeft + "d" : null));
         sendLavaBar();
     }
 

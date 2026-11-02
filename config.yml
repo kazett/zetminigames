@@ -44,7 +44,7 @@ battleroyale:
     force-size-1: 10
     force-size-2: 1
   # PVP aktif sekian detik setelah platform hancur
-  pvp-delay-seconds: 30
+  pvp-delay-seconds: 100
   # Detik ke berapa semua chest yang sudah ada diisi ulang (loot baru). 600 = menit 10
   chest-refill-seconds: 600
 

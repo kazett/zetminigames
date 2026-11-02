@@ -83,7 +83,8 @@ public class BattleRoyaleGame implements Match, Listener {
     private static final int SLOW_FALL_TICKS = 20 * 600;
     private static final int CAGE_HEIGHT = 5;
     private static final int FORCED_STAGES = 2;
-    private static final int CHEST_CELL = 14;
+    /** Jarak grid antar chest ~10 block (lebih padat). */
+    private static final int CHEST_CELL = 10;
     private static final int CHEST_JITTER = 2;
     /** Detik ke berapa semua chest diisi ulang (default 600 = menit 10). Config: chest-refill-seconds. */
     private static final int REFILL_SEC = 600;
@@ -416,13 +417,24 @@ public class BattleRoyaleGame implements Match, Listener {
                 int dx = x - centerX;
                 int dz = z - centerZ;
                 if (dx * dx + dz * dz <= skyR * skyR) continue;
-                int y = world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING_NO_LEAVES);
+                // Surface apa saja (pohon, gunung, daun, salju) — cuma skip air murni
+                int y = world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING);
+                if (y <= world.getMinHeight()) continue;
                 Block ground = world.getBlockAt(x, y, z);
-                if (ground.isLiquid() || BAD_GROUND.contains(ground.getType())) continue;
-                if (BAD_GROUND.contains(world.getBlockAt(x, y - 1, z).getType())) continue;
-                if (badBiome(world.getBiome(x, y, z))) continue;
+                if (ground.isLiquid()) continue;
                 Block spot = world.getBlockAt(x, y + 1, z);
-                if (!spot.isEmpty() && !Tag.LEAVES.isTagged(spot.getType())) continue;
+                // timpa daun / snow / grass biar chest selalu muncul
+                if (!spot.isEmpty()
+                        && !Tag.LEAVES.isTagged(spot.getType())
+                        && spot.getType() != Material.SNOW
+                        && spot.getType() != Material.SHORT_GRASS
+                        && spot.getType() != Material.TALL_GRASS
+                        && spot.getType() != Material.FERN
+                        && spot.getType() != Material.LARGE_FERN
+                        && !spot.getType().name().contains("FLOWER")
+                        && !spot.getType().name().contains("SAPLING")) {
+                    continue;
+                }
                 spot.setType(Material.CHEST, false);
                 if (spot.getState() instanceof Chest chest) {
                     BrLoot.fill(chest.getBlockInventory());
@@ -481,7 +493,7 @@ public class BattleRoyaleGame implements Match, Listener {
     }
 
     private int pvpDelaySec() {
-        return cfgInt("pvp-delay-seconds", 30);
+        return cfgInt("pvp-delay-seconds", 100);
     }
 
     private void readyHud(Player p, int left, int total) {
@@ -494,7 +506,7 @@ public class BattleRoyaleGame implements Match, Listener {
             bars.put(id, bar);
             p.showBossBar(bar);
         }
-        bar.name(Hud.buildBr(new Hud.BrData("READY", 0x5AD2FF, timer, left / (double) Math.max(1, total),
+        bar.name(Hud.buildBr(new Hud.BrData("BERSIAP", 0x5AD2FF, timer, left / (double) Math.max(1, total),
                 "PVP " + Hud.fmtTime(pvpDelaySec()), 0xFFAA55, alive.size(), Math.max(startCount, alive.size()),
                 0, "", 0x55FF55, 0, testMode)));
     }
@@ -580,7 +592,8 @@ public class BattleRoyaleGame implements Match, Listener {
             UUID id = p.getUniqueId();
             if (!alive.contains(id)) continue;
             falling.add(id);
-            p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, SLOW_FALL_TICKS, 0, false, false));
+            // amplifier 1 = Slow Falling II (turun lebih pelan, player sempat menjauh)
+            p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, SLOW_FALL_TICKS, 1, false, false));
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_GO),
                     Component.text("GO!", NamedTextColor.GREEN, TextDecoration.BOLD),
                     Component.text("Find loot", NamedTextColor.GRAY),
@@ -620,12 +633,12 @@ public class BattleRoyaleGame implements Match, Listener {
             if (sec < shrinkAt[i]) {
                 int span = Math.max(1, shrinkAt[i] - prevEnd);
                 int left = shrinkAt[i] - sec;
-                return new Phase("ZONE", 0x5AD2FF, left, left / (double) span, false, false);
+                return new Phase("ZONA", 0x5AD2FF, left, left / (double) span, false, false);
             }
             int endAt = shrinkAt[i] + shrinkLen[i];
             if (sec < endAt) {
                 int left = endAt - sec;
-                return new Phase("SHRINK", 0xFF5555, left, left / (double) Math.max(1, shrinkLen[i]), true, false);
+                return new Phase("MENGECIL", 0xFF5555, left, left / (double) Math.max(1, shrinkLen[i]), true, false);
             }
         }
         return new Phase("FINAL", 0xFF5555, 0, 0.0, false, true);
@@ -709,7 +722,7 @@ public class BattleRoyaleGame implements Match, Listener {
 
         boolean outside = edge < 0;
         int distColor = outside ? 0xFF5555 : edge < 15 ? 0xFFAA00 : 0x55FF55;
-        String distText = outside ? "OUT " + (int) Math.ceil(-edge) + "m" : "EDGE " + (int) edge + "m";
+        String distText = outside ? "LUAR " + (int) Math.ceil(-edge) + "m" : "TEPI " + (int) edge + "m";
         String pvpText = pvpOn ? "PVP ON" : "PVP " + Hud.fmtTime(pvpLeft);
         int pvpColor = pvpOn ? 0xFF5555 : 0xFFAA55;
         String timer = clock(sec);

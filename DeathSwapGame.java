@@ -384,7 +384,7 @@ public class DeathSwapGame implements Match {
 
     private String roundSubtitle() {
         if (bonus) return "BONUS MATCH";
-        return settings.rounds > 1 ? "Round " + roundNo + "/" + settings.rounds : "Get ready!";
+        return settings.rounds > 1 ? "Ronde " + roundNo + "/" + settings.rounds : "Siap!";
     }
 
     private void prepare(Player p) {
@@ -507,7 +507,7 @@ public class DeathSwapGame implements Match {
         }
         bossBar.name(Hud.buildSwap(hs, al, alive.size(), n, Math.max(0, nextSwap), frac,
                 plugin.headAdvance(), plugin.slotWidth(), roundLabel(),
-                readyLeft > 0 ? "START " + readyLeft + "s" : null,
+                readyLeft > 0 ? "MULAI " + readyLeft + "d" : null,
                 state == State.RUNNING ? (int) ((System.currentTimeMillis() - runStart) / 1000) : 0));
     }
 

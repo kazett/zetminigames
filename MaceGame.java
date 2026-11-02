@@ -297,7 +297,7 @@ public class MaceGame implements Match {
 
     private String roundSubtitle() {
         if (bonus) return "BONUS MATCH";
-        return settings.rounds > 1 ? "Round " + roundNo + "/" + settings.rounds : "Get ready!";
+        return settings.rounds > 1 ? "Ronde " + roundNo + "/" + settings.rounds : "Siap!";
     }
 
     private void prepare(Player p) {
@@ -526,9 +526,9 @@ public class MaceGame implements Match {
 
     private String topText() {
         return switch (phase) {
-            case INTRO, READY -> prepLeft > 0 ? "START " + prepLeft + "s" : "READY";
+            case INTRO, READY -> prepLeft > 0 ? "MULAI " + prepLeft + "d" : "SIAP";
             case SPIN -> "ROULETTE";
-            case ATTEMPT -> "MACE " + Math.max(0, (int) Math.ceil((deadline - System.currentTimeMillis()) / 1000.0)) + "s";
+            case ATTEMPT -> "MACE " + Math.max(0, (int) Math.ceil((deadline - System.currentTimeMillis()) / 1000.0)) + "d";
             case RESOLVE -> "RESET";
         };
     }

@@ -14,30 +14,32 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Loot chest Battle Royale — fokus PVP, cukup generous.
+ * Wind charge / ender pearl / gapple / gear sering keluar.
+ */
 public final class BrLoot {
     private BrLoot() {}
 
-    private static final int MIN_ITEMS = 3;
-    private static final int MAX_ITEMS = 10;
+    private static final int MIN_ITEMS = 5;
+    private static final int MAX_ITEMS = 12;
 
     private record Entry(Material material, int min, int max, int weight, PotionType potion) {}
 
-    /** Peluang satu item loot (yang bisa dienchant) dapat 1 enchant. Sisanya polos. */
-    private static final double ENCHANT_CHANCE = 0.30;
+    private static final double ENCHANT_CHANCE = 0.40;
 
-    /** Satu opsi enchant: key vanilla, level maksimal, bobot. Key yang gak ada di versi server dilewati. */
     private record Opt(String key, int max, int weight) {}
 
-    private static final List<Opt> SWORD = List.of(new Opt("sharpness", 3, 6), new Opt("knockback", 1, 2), new Opt("fire_aspect", 1, 1));
-    private static final List<Opt> AXE = List.of(new Opt("sharpness", 2, 3), new Opt("efficiency", 3, 2));
-    private static final List<Opt> PICKAXE = List.of(new Opt("efficiency", 3, 3), new Opt("unbreaking", 2, 2));
-    private static final List<Opt> SPEAR = List.of(new Opt("sharpness", 2, 3), new Opt("lunge", 2, 2));
+    private static final List<Opt> SWORD = List.of(new Opt("sharpness", 4, 6), new Opt("knockback", 2, 2), new Opt("fire_aspect", 2, 2));
+    private static final List<Opt> AXE = List.of(new Opt("sharpness", 3, 4), new Opt("efficiency", 3, 2));
+    private static final List<Opt> PICKAXE = List.of(new Opt("efficiency", 4, 3), new Opt("unbreaking", 2, 2));
+    private static final List<Opt> SPEAR = List.of(new Opt("sharpness", 3, 3), new Opt("lunge", 2, 2));
     private static final List<Opt> ARMOR = List.of(new Opt("protection", 4, 6), new Opt("projectile_protection", 3, 2), new Opt("unbreaking", 2, 2));
-    private static final List<Opt> BOOTS = List.of(new Opt("protection", 4, 5), new Opt("feather_falling", 3, 3), new Opt("unbreaking", 2, 1));
-    private static final List<Opt> BOW = List.of(new Opt("power", 3, 5), new Opt("punch", 1, 1));
-    private static final List<Opt> CROSSBOW = List.of(new Opt("quick_charge", 2, 3), new Opt("piercing", 2, 2));
-    private static final List<Opt> MACE = List.of(new Opt("density", 2, 3), new Opt("wind_burst", 1, 1));
-    private static final List<Opt> SHIELD = List.of(new Opt("unbreaking", 2, 1));
+    private static final List<Opt> BOOTS = List.of(new Opt("protection", 4, 5), new Opt("feather_falling", 4, 3), new Opt("unbreaking", 2, 1));
+    private static final List<Opt> BOW = List.of(new Opt("power", 4, 5), new Opt("punch", 2, 2), new Opt("flame", 1, 1));
+    private static final List<Opt> CROSSBOW = List.of(new Opt("quick_charge", 3, 3), new Opt("piercing", 3, 2), new Opt("multishot", 1, 1));
+    private static final List<Opt> MACE = List.of(new Opt("density", 3, 3), new Opt("wind_burst", 2, 2));
+    private static final List<Opt> SHIELD = List.of(new Opt("unbreaking", 3, 2));
 
     private static final List<Entry> POOL = new ArrayList<>();
     private static int totalWeight;
@@ -47,74 +49,100 @@ public final class BrLoot {
         totalWeight += weight;
     }
 
-    /** Potion drinkable dengan tipe tertentu (cuma 4 jenis yang dipakai di loot BR). */
     private static void addPotion(PotionType type, int weight) {
         POOL.add(new Entry(Material.POTION, 1, 1, weight, type));
         totalWeight += weight;
     }
 
+    private static void addSplash(PotionType type, int weight) {
+        POOL.add(new Entry(Material.SPLASH_POTION, 1, 1, weight, type));
+        totalWeight += weight;
+    }
+
     static {
-        add(Material.WOODEN_SWORD, 1, 1, 6);
-        add(Material.STONE_SWORD, 1, 1, 8);
-        add(Material.IRON_SWORD, 1, 1, 5);
-        add(Material.DIAMOND_SWORD, 1, 1, 2);
-        add(Material.STONE_AXE, 1, 1, 6);
-        add(Material.IRON_AXE, 1, 1, 4);
-        add(Material.DIAMOND_AXE, 1, 1, 1);
-        add(Material.WOODEN_PICKAXE, 1, 1, 6);
-        add(Material.STONE_PICKAXE, 1, 1, 8);
-        add(Material.IRON_PICKAXE, 1, 1, 5);
-        add(Material.DIAMOND_PICKAXE, 1, 1, 1);
-        add(Material.LEATHER_HELMET, 1, 1, 5);
-        add(Material.LEATHER_CHESTPLATE, 1, 1, 5);
-        add(Material.LEATHER_LEGGINGS, 1, 1, 5);
-        add(Material.LEATHER_BOOTS, 1, 1, 5);
-        add(Material.CHAINMAIL_HELMET, 1, 1, 3);
-        add(Material.CHAINMAIL_CHESTPLATE, 1, 1, 3);
-        add(Material.CHAINMAIL_LEGGINGS, 1, 1, 3);
-        add(Material.CHAINMAIL_BOOTS, 1, 1, 3);
-        add(Material.IRON_HELMET, 1, 1, 3);
-        add(Material.IRON_CHESTPLATE, 1, 1, 3);
-        add(Material.IRON_LEGGINGS, 1, 1, 3);
-        add(Material.IRON_BOOTS, 1, 1, 3);
-        add(Material.DIAMOND_HELMET, 1, 1, 1);
-        add(Material.DIAMOND_CHESTPLATE, 1, 1, 1);
-        add(Material.DIAMOND_LEGGINGS, 1, 1, 1);
-        add(Material.DIAMOND_BOOTS, 1, 1, 1);
-        add(Material.NETHERITE_SWORD, 1, 1, 1);
+        // ---- weapons (tinggi) ----
+        add(Material.STONE_SWORD, 1, 1, 10);
+        add(Material.IRON_SWORD, 1, 1, 12);
+        add(Material.DIAMOND_SWORD, 1, 1, 6);
+        add(Material.NETHERITE_SWORD, 1, 1, 2);
+        add(Material.STONE_AXE, 1, 1, 8);
+        add(Material.IRON_AXE, 1, 1, 8);
+        add(Material.DIAMOND_AXE, 1, 1, 3);
+        add(Material.BOW, 1, 1, 10);
+        add(Material.CROSSBOW, 1, 1, 8);
+        add(Material.ARROW, 8, 24, 14);
+        add(Material.SPECTRAL_ARROW, 4, 12, 5);
+        add(Material.MACE, 1, 1, 5);
+        add(Material.TRIDENT, 1, 1, 3);
+        add(Material.SHIELD, 1, 1, 8);
+        addNamed("WOODEN_SPEAR", 1, 1, 5);
+        addNamed("STONE_SPEAR", 1, 1, 7);
+        addNamed("IRON_SPEAR", 1, 1, 6);
+        addNamed("DIAMOND_SPEAR", 1, 1, 2);
+
+        // ---- armor ----
+        add(Material.CHAINMAIL_HELMET, 1, 1, 5);
+        add(Material.CHAINMAIL_CHESTPLATE, 1, 1, 5);
+        add(Material.CHAINMAIL_LEGGINGS, 1, 1, 5);
+        add(Material.CHAINMAIL_BOOTS, 1, 1, 5);
+        add(Material.IRON_HELMET, 1, 1, 8);
+        add(Material.IRON_CHESTPLATE, 1, 1, 8);
+        add(Material.IRON_LEGGINGS, 1, 1, 8);
+        add(Material.IRON_BOOTS, 1, 1, 8);
+        add(Material.DIAMOND_HELMET, 1, 1, 4);
+        add(Material.DIAMOND_CHESTPLATE, 1, 1, 4);
+        add(Material.DIAMOND_LEGGINGS, 1, 1, 4);
+        add(Material.DIAMOND_BOOTS, 1, 1, 4);
         add(Material.NETHERITE_HELMET, 1, 1, 1);
         add(Material.NETHERITE_CHESTPLATE, 1, 1, 1);
         add(Material.NETHERITE_LEGGINGS, 1, 1, 1);
         add(Material.NETHERITE_BOOTS, 1, 1, 1);
-        add(Material.SHIELD, 1, 1, 3);
-        add(Material.BOW, 1, 1, 5);
-        add(Material.CROSSBOW, 1, 1, 4);
-        add(Material.ARROW, 4, 12, 8);
-        add(Material.ENDER_PEARL, 1, 3, 8);
-        add(Material.GOLDEN_APPLE, 1, 3, 8);
-        add(Material.COOKED_BEEF, 3, 8, 10);
-        add(Material.COOKED_PORKCHOP, 3, 8, 8);
-        add(Material.COOKED_CHICKEN, 3, 8, 6);
-        add(Material.BREAD, 4, 10, 8);
-        add(Material.COBWEB, 2, 6, 7);
-        add(Material.WATER_BUCKET, 1, 1, 7);
+
+        // ---- combat utility (tinggi — jangan pelit) ----
+        add(Material.ENDER_PEARL, 2, 6, 16);
+        add(Material.WIND_CHARGE, 4, 12, 16);
+        add(Material.GOLDEN_APPLE, 2, 5, 14);
+        add(Material.ENCHANTED_GOLDEN_APPLE, 1, 1, 2);
+        add(Material.TOTEM_OF_UNDYING, 1, 1, 4);
+        add(Material.COBWEB, 4, 12, 10);
+        add(Material.TNT, 2, 6, 6);
+        add(Material.FLINT_AND_STEEL, 1, 1, 5);
+        add(Material.FIRE_CHARGE, 4, 10, 5);
+        add(Material.SNOWBALL, 8, 16, 6);
+        add(Material.EGG, 8, 16, 4);
+
+        // ---- tools (sedang) ----
+        add(Material.IRON_PICKAXE, 1, 1, 6);
+        add(Material.DIAMOND_PICKAXE, 1, 1, 3);
+        add(Material.IRON_SHOVEL, 1, 1, 3);
+        add(Material.WATER_BUCKET, 1, 1, 8);
         add(Material.LAVA_BUCKET, 1, 1, 5);
         add(Material.FISHING_ROD, 1, 1, 3);
-        add(Material.WIND_CHARGE, 2, 6, 5);
-        add(Material.MACE, 1, 1, 4);
-        addNamed("WOODEN_SPEAR", 1, 1, 6);
-        addNamed("STONE_SPEAR", 1, 1, 8);
-        addNamed("COPPER_SPEAR", 1, 1, 6);
-        addNamed("IRON_SPEAR", 1, 1, 5);
-        addNamed("DIAMOND_SPEAR", 1, 1, 1);
-        // Totem + 4 potion (swiftness, healing, invisibility, fire resistance). Atur bobot (angka terakhir) kalau kurang/kebanyakan.
-        add(Material.TOTEM_OF_UNDYING, 1, 1, 3);
-        addPotion(PotionType.SWIFTNESS, 5);
-        addPotion(PotionType.HEALING, 5);
+
+        // ---- potions ----
+        addPotion(PotionType.SWIFTNESS, 7);
+        addPotion(PotionType.STRENGTH, 6);
+        addPotion(PotionType.HEALING, 7);
+        addPotion(PotionType.FIRE_RESISTANCE, 5);
         addPotion(PotionType.INVISIBILITY, 4);
-        addPotion(PotionType.FIRE_RESISTANCE, 4);
-        add(Material.COBBLESTONE, 12, 32, 12);
-        add(Material.OAK_PLANKS, 12, 32, 12);
+        addPotion(PotionType.NIGHT_VISION, 3);
+        addPotion(PotionType.TURTLE_MASTER, 2);
+        addSplash(PotionType.HARMING, 5);
+        addSplash(PotionType.POISON, 4);
+        addSplash(PotionType.SLOWNESS, 4);
+        addSplash(PotionType.WEAKNESS, 3);
+
+        // ---- food ----
+        add(Material.COOKED_BEEF, 4, 12, 8);
+        add(Material.COOKED_PORKCHOP, 4, 12, 6);
+        add(Material.GOLDEN_CARROT, 4, 10, 6);
+        add(Material.BREAD, 6, 16, 5);
+
+        // ---- blocks (sedikit aja, biar gak sampah) ----
+        add(Material.COBBLESTONE, 16, 32, 4);
+        add(Material.OAK_PLANKS, 16, 32, 4);
+        add(Material.OBSIDIAN, 4, 12, 3);
+        add(Material.ENDER_CHEST, 1, 1, 2);
     }
 
     private static void addNamed(String name, int min, int max, int weight) {
@@ -163,17 +191,16 @@ public final class BrLoot {
         if (n.equals("CROSSBOW")) return CROSSBOW;
         if (n.equals("MACE")) return MACE;
         if (n.equals("SHIELD")) return SHIELD;
+        if (n.equals("TRIDENT")) return SWORD;
         return null;
     }
 
-    /** Tier gear: netherite level 1 aja, diamond maks 2, sisanya sampai level maksimal opsi. */
     private static int cap(int max, String n) {
-        if (n.startsWith("NETHERITE")) return 1;
-        if (n.startsWith("DIAMOND")) return Math.min(max, 2);
+        if (n.startsWith("NETHERITE")) return Math.min(max, 2);
+        if (n.startsWith("DIAMOND")) return Math.min(max, 3);
         return max;
     }
 
-    /** Level condong rendah: untuk maks 4 -> 40% / 30% / 20% / 10% buat level 1 / 2 / 3 / 4. */
     private static int rollLevel(int max, ThreadLocalRandom random) {
         int total = max * (max + 1) / 2;
         int r = random.nextInt(total);

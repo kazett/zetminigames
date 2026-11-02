@@ -26,18 +26,19 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Pool item Pillar of Fortune (v24b): SEMUA Material valid, 100% random. Armor + senjata PvP bobot x1.3 (30% lebih sering).
- * - Jumlah selalu 1 (gak pernah stack > 1).
- * - Item yang sama gak boleh berturut-turut (GAP_BETWEEN = 1).
- * - Varian acak: potion, enchanted book, player head, goat horn.
- * - Blacklist cuma item teknis yang rusak game.
+ * Pool item Pillar of Fortune:
+ * - 60% roll dari pool PVP (senjata, armor, pearl, wind charge, gapple, dll)
+ * - 40% roll dari SEMUA material valid (random murni)
+ * - Jumlah selalu 1, item sama gak boleh berturut-turut.
  */
 public final class ItemPool {
     static final int MAX_BLOCK = 1;
     static final int MAX_ITEM = 1;
-    /** Minimal 1 item lain di antara dua item Material yang sama → gak berturut-turut. */
     static final int GAP_BETWEEN = 1;
-    private static final int MAX_BLOCK_RUN = 8;
+    private static final int MAX_BLOCK_RUN = 4;
+
+    /** Peluang ambil dari pool PVP (sisanya = random all). */
+    static final double PVP_CHANCE = 0.60;
 
     private static final Set<String> BLACKLIST = new HashSet<>(List.of(
             "BARRIER", "LIGHT", "STRUCTURE_VOID", "STRUCTURE_BLOCK", "JIGSAW",
@@ -45,20 +46,29 @@ public final class ItemPool {
             "DEBUG_STICK", "KNOWLEDGE_BOOK", "TEST_BLOCK", "TEST_INSTANCE_BLOCK",
             "SPAWNER", "TRIAL_SPAWNER", "VAULT", "REINFORCED_DEEPSLATE", "FARMLAND"));
 
-    /** Armor + senjata/tool PvP muncul 30% lebih sering dari item lain (tetap random). */
-    static final double PVP_BOOST = 1.3;
-
     private static boolean pvp(Material m) {
         String n = m.name();
         return n.endsWith("_HELMET") || n.endsWith("_CHESTPLATE") || n.endsWith("_LEGGINGS") || n.endsWith("_BOOTS")
                 || n.endsWith("_SWORD") || n.endsWith("_AXE") || n.endsWith("_SPEAR")
+                || n.endsWith("_PICKAXE") || n.endsWith("_SHOVEL") || n.endsWith("_HOE")
                 || n.equals("BOW") || n.equals("CROSSBOW") || n.equals("MACE")
-                || n.equals("TRIDENT") || n.equals("SHIELD");
+                || n.equals("TRIDENT") || n.equals("SHIELD")
+                || n.equals("ENDER_PEARL") || n.equals("WIND_CHARGE")
+                || n.equals("GOLDEN_APPLE") || n.equals("ENCHANTED_GOLDEN_APPLE")
+                || n.equals("TOTEM_OF_UNDYING") || n.equals("COBWEB")
+                || n.equals("ARROW") || n.equals("SPECTRAL_ARROW") || n.equals("TIPPED_ARROW")
+                || n.equals("TNT") || n.equals("END_CRYSTAL")
+                || n.equals("FIRE_CHARGE") || n.equals("FLINT_AND_STEEL")
+                || n.equals("WATER_BUCKET") || n.equals("LAVA_BUCKET")
+                || n.equals("POTION") || n.equals("SPLASH_POTION") || n.equals("LINGERING_POTION")
+                || n.equals("SNOWBALL") || n.equals("EGG")
+                || n.equals("FISHING_ROD") || n.equals("SHIELD");
     }
 
-    private record Entry(Material mat, boolean block, double weight) {}
+    private record Entry(Material mat, boolean block) {}
 
-    private static final List<Entry> POOL = new ArrayList<>();
+    private static final List<Entry> ALL = new ArrayList<>();
+    private static final List<Entry> PVP = new ArrayList<>();
     private static final List<PotionType> POTIONS = new ArrayList<>();
     private static final List<Enchantment> ENCHANTS = new ArrayList<>();
     private static final List<MusicInstrument> HORNS = new ArrayList<>();
@@ -74,7 +84,9 @@ public final class ItemPool {
 
         for (Material m : Material.values()) {
             if (!valid(m)) continue;
-            POOL.add(new Entry(m, m.isBlock(), pvp(m) ? PVP_BOOST : 1.0));
+            Entry e = new Entry(m, m.isBlock());
+            ALL.add(e);
+            if (pvp(m)) PVP.add(e);
         }
     }
 
@@ -126,7 +138,6 @@ public final class ItemPool {
         return it;
     }
 
-    /** Pengocok per game: riwayat per pemain biar item gak berturut-turut sama. */
     public static final class Roller {
         private static final class State {
             final Map<Material, Integer> last = new HashMap<>();
@@ -140,28 +151,30 @@ public final class ItemPool {
             State s = states.computeIfAbsent(id, k -> new State());
             s.draws++;
 
+            ThreadLocalRandom r = ThreadLocalRandom.current();
+            // 60% PVP pool, 40% full random
+            List<Entry> preferred = r.nextDouble() < PVP_CHANCE ? PVP : ALL;
+
+            List<Entry> ok = filter(preferred, s);
+            if (ok.isEmpty()) ok = filter(ALL, s);
+            if (ok.isEmpty()) ok = ALL;
+
+            Entry pick = ok.get(r.nextInt(ok.size()));
+            s.last.put(pick.mat, s.draws);
+            if (pick.block) s.blockRun++;
+            else s.blockRun = 0;
+            return make(pick);
+        }
+
+        private static List<Entry> filter(List<Entry> src, State s) {
             List<Entry> ok = new ArrayList<>();
-            for (Entry e : POOL) {
+            for (Entry e : src) {
                 Integer l = s.last.get(e.mat);
                 if (l != null && s.draws - l <= GAP_BETWEEN) continue;
                 if (e.block && s.blockRun >= MAX_BLOCK_RUN) continue;
                 ok.add(e);
             }
-            Entry pick;
-            List<Entry> src = ok.isEmpty() ? POOL : ok;
-            double total = 0;
-            for (Entry e : src) total += e.weight;
-            double roll = ThreadLocalRandom.current().nextDouble() * total;
-            pick = src.get(src.size() - 1);
-            for (Entry e : src) {
-                roll -= e.weight;
-                if (roll < 0) { pick = e; break; }
-            }
-
-            s.last.put(pick.mat, s.draws);
-            if (pick.block) s.blockRun++;
-            else s.blockRun = 0;
-            return make(pick);
+            return ok;
         }
     }
 }

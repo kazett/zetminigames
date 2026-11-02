@@ -95,7 +95,7 @@ public final class Hud {
                                   int borderSec, boolean shrinking, String roundLabel, int clockSec,
                                   String topOverride) {
         return compose(heads, alive, aliveCount, total,
-                topOverride != null ? topOverride : "NEXT ITEM " + nextItemSec + "s", frac, headAdv, slot,
+                topOverride != null ? topOverride : "ITEM " + nextItemSec + "d", frac, headAdv, slot,
                 borderSec, shrinking, roundLabel, true, clockSec);
     }
 
@@ -103,7 +103,7 @@ public final class Hud {
                                       int swapSec, double frac, int headAdv, int slot, String roundLabel,
                                       String topOverride, int clockSec) {
         return compose(heads, alive, aliveCount, total,
-                topOverride != null ? topOverride : "SWAP TP " + fmtTime(swapSec), frac, headAdv, slot,
+                topOverride != null ? topOverride : "TUKAR " + fmtTime(swapSec), frac, headAdv, slot,
                 0, false, roundLabel, false, clockSec);
     }
 
@@ -166,7 +166,7 @@ public final class Hud {
             r.glyph(ICON_BORDER, GLYPH8_ADV, FONT_LOW);
             r.shift(2);
             if (shrinking) {
-                r.text(hasLabel && clockSec >= 0 ? "SHRINK!" : "SHRINKING!", TextColor.color(0xFF5555), FONT_LOW);
+                r.text(hasLabel && clockSec >= 0 ? "KECIL!" : "MENGECIL!", TextColor.color(0xFF5555), FONT_LOW);
             } else {
                 if (!hasLabel || clockSec < 0) r.text("BORDER ", TextColor.color(0x80C8FF), FONT_LOW);
                 r.text(fmtTime(borderSec), TextColor.color(0xFFFFFF), FONT_LOW);
@@ -224,7 +224,7 @@ public final class Hud {
         r.text(d.pvp(), TextColor.color(d.pvpColor()));
         if (d.test()) {
             r.shiftTo(72);
-            r.text("[TEST]", TextColor.color(0xFFAA00));
+            r.text("[TES]", TextColor.color(0xFFAA00));
         }
         String cnt = d.alive() + "/" + d.total();
         int xText = PANEL_W - 7 - width(cnt);
