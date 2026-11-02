@@ -24,6 +24,8 @@ public class GameSettings {
     public boolean drawEnabled = false;
     /** Berhenti lebih awal kalau pemenang udah pasti (sisa ronde gak bisa dikejar). */
     public boolean skipClinched = true;
+    /** Deathswap: gak boleh mati kena jebakan dengan cara yang sama dua kali (cara sama = seri, ronde diulang). */
+    public boolean uniqueDeath = true;
 
     public static String fmt(int sec) {
         if (sec >= 60) return (sec / 60) + "m" + (sec % 60 == 0 ? "" : (sec % 60) + "s");

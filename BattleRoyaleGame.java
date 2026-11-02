@@ -85,6 +85,8 @@ public class BattleRoyaleGame implements Match, Listener {
     private static final int FORCED_STAGES = 2;
     private static final int CHEST_CELL = 14;
     private static final int CHEST_JITTER = 2;
+    /** Detik ke berapa semua chest diisi ulang (default 600 = menit 10). Config: chest-refill-seconds. */
+    private static final int REFILL_SEC = 600;
     private static final long NOON = 6000L;
     /** Ukuran zona awal (1000 = 1000x1000). */
     private static final double DEFAULT_START_SIZE = 1000.0;
@@ -114,6 +116,12 @@ public class BattleRoyaleGame implements Match, Listener {
     private final Map<UUID, BossBar> bars = new HashMap<>();
     private final Set<String> warned = new HashSet<>();
     private final Set<Long> placed = new HashSet<>();
+    private record ChestSpot(int x, int y, int z) {}
+    /** Semua chest loot per chunk (key = chunk key), dipakai buat isi ulang di menit ke-10. */
+    private final Map<Long, List<ChestSpot>> chestSpots = new HashMap<>();
+    /** Chunk yang belum ke-load pas refill; diisi ulang begitu chunk-nya ke-load lagi. */
+    private final Set<Long> pendingRefill = new HashSet<>();
+    private boolean refilled;
 
     private World world;
     private Location skyCenter;
@@ -333,7 +341,10 @@ public class BattleRoyaleGame implements Match, Listener {
         if (world == null || !e.getWorld().equals(world)) return;
         Chunk chunk = e.getChunk();
         Bukkit.getScheduler().runTask(plugin, () -> {
-            if (state != State.ENDED && world != null && chunk.isLoaded()) placeChests(chunk);
+            if (state != State.ENDED && world != null && chunk.isLoaded()) {
+                placeChests(chunk);
+                if (pendingRefill.remove(chunk.getChunkKey())) refillChunk(chunk.getChunkKey());
+            }
         });
     }
 
@@ -345,6 +356,33 @@ public class BattleRoyaleGame implements Match, Listener {
     @EventHandler
     public void onAdvancement(PlayerAdvancementDoneEvent e) {
         if (order.contains(e.getPlayer().getUniqueId())) e.message(null);
+    }
+
+    /** Isi ulang SEMUA chest yang sudah ada dari awal (menit ke-10 / chest-refill-seconds). Chunk belum load diisi pas ke-load. */
+    private void refillChests() {
+        if (world == null) return;
+        for (Map.Entry<Long, List<ChestSpot>> en : chestSpots.entrySet()) {
+            ChestSpot first = en.getValue().get(0);
+            if (world.isChunkLoaded(first.x() >> 4, first.z() >> 4)) refillChunk(en.getKey());
+            else pendingRefill.add(en.getKey());
+        }
+        // Chat saja (gak title tengah). Loot baru di chest yang sudah ada dari awal.
+        msg(Component.text("Loot baru drop!", NamedTextColor.GOLD, TextDecoration.BOLD));
+        for (Player p : participants()) {
+            p.playSound(p.getLocation(), Sound.BLOCK_CHEST_OPEN, 0.8f, 1.2f);
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.35f, 1.4f);
+        }
+    }
+
+    private void refillChunk(long chunkKey) {
+        List<ChestSpot> spots = chestSpots.get(chunkKey);
+        if (spots == null || world == null) return;
+        for (ChestSpot c : spots) {
+            Block b = world.getBlockAt(c.x(), c.y(), c.z());
+            if (b.getType() == Material.CHEST && b.getState() instanceof Chest chest) {
+                BrLoot.fill(chest.getBlockInventory());
+            }
+        }
     }
 
     private void placeChests(Chunk chunk) {
@@ -368,7 +406,11 @@ public class BattleRoyaleGame implements Match, Listener {
                 Block spot = world.getBlockAt(x, y + 1, z);
                 if (!spot.isEmpty() && !Tag.LEAVES.isTagged(spot.getType())) continue;
                 spot.setType(Material.CHEST, false);
-                if (spot.getState() instanceof Chest chest) BrLoot.fill(chest.getBlockInventory());
+                if (spot.getState() instanceof Chest chest) {
+                    BrLoot.fill(chest.getBlockInventory());
+                    chestSpots.computeIfAbsent(chunk.getChunkKey(), k -> new ArrayList<>())
+                            .add(new ChestSpot(x, y + 1, z));
+                }
             }
         }
     }
@@ -581,22 +623,26 @@ public class BattleRoyaleGame implements Match, Listener {
         if (state == State.RUNNING) {
             pvpLeft = pvpOn ? 0 : Math.max(0, (int) Math.ceil((releaseAt + pvpDelay * 1000L - now) / 1000.0));
 
-            // zona mulai mengecil
+            // isi ulang semua chest di menit ke-10
+            if (!refilled && sec >= cfgInt("chest-refill-seconds", REFILL_SEC)) {
+                refilled = true;
+                refillChests();
+            }
+
+            // zona mulai mengecil — gak pakai title tengah layar (ganggu). HUD custom sudah nampilin fase MENGECIL.
             while (nextShrink < shrinkAt.length && sec >= shrinkAt[nextShrink]) {
                 int i = nextShrink++;
                 long from = Math.round(wb.getSize());
                 wb.setSize(sizes[i], shrinkLen[i]);
-                Component big = Component.text("ZONA MENGECIL", NamedTextColor.RED, TextDecoration.BOLD);
-                Component small = Component.text(from + " > " + sizes[i] + "  (" + Hud.fmtTime(shrinkLen[i]) + ")", NamedTextColor.YELLOW);
-                Title.Times times = Title.Times.times(Duration.ofMillis(150), Duration.ofMillis(2200), Duration.ofMillis(400));
                 for (Player p : participants()) {
-                    p.showTitle(Title.title(big, small, times));
-                    p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
+                    p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.55f, 1f);
                 }
-                msg(Component.text("Zona mengecil: " + sizes[i], NamedTextColor.RED, TextDecoration.BOLD));
+                // Chat ringkas saja + info di HUD (phase MENGECIL + timer)
+                msg(Component.text("Zona mengecil ", NamedTextColor.RED, TextDecoration.BOLD)
+                        .append(Component.text(from + " → " + sizes[i] + "  (" + Hud.fmtTime(shrinkLen[i]) + ")", NamedTextColor.YELLOW)));
             }
 
-            // peringatan sebelum zona mengecil (30s, 10s, lalu hitung mundur 5..1)
+            // peringatan sebelum zona mengecil (30s, 10s) — chat saja, gak title tengah. 5..1 cuma sound.
             if (nextShrink < shrinkAt.length) {
                 int i = nextShrink;
                 int left = shrinkAt[i] - sec;
@@ -908,9 +954,19 @@ public class BattleRoyaleGame implements Match, Listener {
 
     @Override
     public void onBlockBreak(BlockBreakEvent e) {
-        boolean own = state == State.RUNNING && alive.contains(e.getPlayer().getUniqueId())
-                && placed.remove(e.getBlock().getBlockKey());
-        if (!own) e.setCancelled(true);
+        // Semua block boleh dihancurin selama match jalan (biar gak stuck di block random). Kecuali chest loot,
+        // bedrock, dan barrier. Block bawaan world gak jatuh item; block yang dipasang pemain tetap jatuh item.
+        if (state != State.RUNNING || !alive.contains(e.getPlayer().getUniqueId())) {
+            e.setCancelled(true);
+            return;
+        }
+        Block b = e.getBlock();
+        Material t = b.getType();
+        if (t == Material.CHEST || t == Material.BEDROCK || t == Material.BARRIER) {
+            e.setCancelled(true);
+            return;
+        }
+        if (!placed.remove(b.getBlockKey())) e.setDropItems(false);
     }
 
     @Override

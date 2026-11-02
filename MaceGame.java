@@ -30,6 +30,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
+import org.bukkit.Difficulty;
 import org.bukkit.FireworkEffect;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -68,6 +69,8 @@ public class MaceGame implements Match {
     private enum Phase { INTRO, SPIN, READY, ATTEMPT, RESOLVE }
 
     private static final int PLATFORM_Y = 100;
+    /** Minimal fall distance (block) supaya hit mace dihitung smash (butuh wind charge / lompat tinggi). Hit di tanah gak dianggap. */
+    private static final float SMASH_FALL_MIN = 1.5f;
     private static final int PLATFORM_R = 14;
     private static final int COUNTDOWN_SEC = 5;
     private static final int READY_SEC = 3;
@@ -112,6 +115,10 @@ public class MaceGame implements Match {
 
     private UUID holder;
     private boolean killed;
+    /** Holder sudah lempar wind charge di attempt ini. */
+    private boolean windUsed;
+    /** Waktu (ms) holder mendarat setelah wind charge; 0 = belum mendarat. */
+    private long windLandAt;
     private long deadline, phaseStart;
 
     public MaceGame(ZetMinigames plugin, GameManager manager, List<Player> players, GameSettings settings) {
@@ -182,6 +189,7 @@ public class MaceGame implements Match {
         if (created == null) return false;
         World prev = world;
         world = created;
+        world.setDifficulty(Difficulty.NORMAL);
         world.setTime(6000L);
         world.setStorm(false);
         world.setSpawnLocation(0, PLATFORM_Y + 1, 0);
@@ -441,6 +449,9 @@ public class MaceGame implements Match {
     private void startAttempt() {
         if (state == State.ENDED || phase != Phase.READY) return;
         phase = Phase.ATTEMPT;
+        windUsed = false;
+        windLandAt = 0L;
+        killed = false;
         long now = System.currentTimeMillis();
         phaseStart = now;
         deadline = now + settings.maceSec * 1000L;
@@ -457,8 +468,26 @@ public class MaceGame implements Match {
 
     private void tick() {
         if (state != State.RUNNING) return;
-        if (phase == Phase.ATTEMPT && System.currentTimeMillis() >= deadline) {
+        if (phase != Phase.ATTEMPT) return;
+        long now = System.currentTimeMillis();
+        if (now >= deadline) {
             resolve(killed ? "Waktu habis" : "Waktu habis, gak ada yang mati");
+            return;
+        }
+        // Sudah pakai wind charge, mendarat, tapi gak kena smash → miss, attempt selesai
+        if (windUsed && !killed && holder != null) {
+            Player h = Bukkit.getPlayer(holder);
+            if (h != null && h.isOnline() && alive.contains(holder)
+                    && h.isOnGround() && h.getFallDistance() < 0.5f) {
+                if (windLandAt == 0L) {
+                    windLandAt = now;
+                } else if (now - windLandAt >= 900L) {
+                    resolve("Miss! Wind charge terbuang");
+                }
+            } else {
+                // masih di udara / lagi jatuh → reset grace mendarat
+                windLandAt = 0L;
+            }
         }
     }
 
@@ -847,13 +876,21 @@ public class MaceGame implements Match {
         boolean live = phase == Phase.ATTEMPT;
         if (live && e instanceof EntityDamageByEntityEvent be && be.getDamager() instanceof Player a
                 && a.getUniqueId().equals(holder) && !a.equals(victim)) {
-            if (e.getFinalDamage() >= victim.getHealth()) {
+            // Hanya smash (jatuh + mace) yang bisa bunuh. Hit biasa di tanah di-cancel.
+            // Wind charge dipakai buat dapat fall distance >= SMASH_FALL_MIN.
+            if (a.getFallDistance() < SMASH_FALL_MIN) {
                 e.setCancelled(true);
-                eliminate(victim, "kena mace");
+                return;
+            }
+            e.setCancelled(true);
+            eliminate(victim, "kena mace smash");
+            // Langsung selesai percobaan, gak nunggu timer
+            if (phase == Phase.ATTEMPT) {
+                later(15L, () -> resolve("Mace smash!"));
             }
             return;
         }
-        // selain pukulan mace (fall, ledakan windcharge, dll) gak bikin damage
+        // selain pukulan mace smash (fall, ledakan windcharge, dll) gak bikin damage
         e.setCancelled(true);
     }
 
@@ -862,6 +899,16 @@ public class MaceGame implements Match {
         // dummy (mode tes) gak boleh pecah
         if (settings.testMode && e.getEntity() instanceof ArmorStand) {
             e.setCancelled(true);
+        }
+    }
+
+    @Override
+    public void onLaunch(Player shooter, ProjectileLaunchEvent e) {
+        if (state != State.RUNNING || phase != Phase.ATTEMPT) return;
+        if (holder == null || !shooter.getUniqueId().equals(holder)) return;
+        if (e.getEntity() instanceof WindCharge) {
+            windUsed = true;
+            windLandAt = 0L;
         }
     }
 

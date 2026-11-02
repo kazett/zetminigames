@@ -16,6 +16,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
+import org.bukkit.Difficulty;
 import org.bukkit.FireworkEffect;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -41,6 +42,7 @@ import org.bukkit.scheduler.BukkitTask;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +65,15 @@ public class DeathSwapGame implements Match {
     private static final int WARN_SEC = 5;
     private static final double SPREAD_BASE = 120.0;
     private static final double SPREAD_PER_PLAYER = 30.0;
-    private static final int SPAWN_TRIES = 25;
+    private static final int SPAWN_TRIES = 40;
+    /** Jarak TP ronde berikutnya dari titik spawn pemain di ronde sebelumnya (block). */
+    private static final double MOVE_MIN = 500.0;
+    private static final double MOVE_MAX = 1000.0;
+    /** Jarak minimal antar pemain di ronde yang sama (block). */
+    private static final double MIN_GAP = 120.0;
+    /** Cek air: 3x3 titik sampel, jarak antar titik SAMPLE_STEP block. Maks MAX_WATER_SAMPLES titik boleh air/lava. */
+    private static final int SAMPLE_STEP = 24;
+    private static final int MAX_WATER_SAMPLES = 2;
 
     private final ZetMinigames plugin;
     private final GameManager manager;
@@ -83,6 +93,23 @@ public class DeathSwapGame implements Match {
     /** Titik spawn ronde ini. Dipakai mode tes solo buat pindah-pindah. */
     private List<Location> spawns = new ArrayList<>();
     private int soloIdx = 0;
+    /** Titik spawn terakhir tiap pemain (buat hitung jarak TP ronde berikutnya). */
+    private final Map<UUID, Location> lastSpawn = new HashMap<>();
+
+    // ===== Aturan anti-meta: 1 pemain gak boleh mati karena jebakan dengan cara yang sama dua kali =====
+    /** Default: kematian dihitung "kena jebakan" kalau terjadi maks sekian detik setelah TP (config deathswap.trap-window-sec). */
+    private static final int DEFAULT_TRAP_WINDOW_SEC = 30;
+    /** Default: dan maks sekian block (horizontal) dari titik tujuan TP (config deathswap.trap-radius). */
+    private static final double DEFAULT_TRAP_RADIUS = 40.0;
+    /** Cara mati (kategori) yang SUDAH TERCATAT per pemain dari ronde-ronde sebelumnya (cuma kematian kena jebakan). */
+    private final Map<UUID, Set<String>> trapDeaths = new HashMap<>();
+    /** Cara mati kena jebakan di ronde yang lagi jalan. Baru dicatat permanen kalau ronde dihitung (gak di-void). */
+    private final Map<UUID, String> roundTrapCause = new HashMap<>();
+    /** Waktu (ms) dan titik tujuan TP terakhir tiap pemain di ronde ini. */
+    private final Map<UUID, Long> swappedAt = new HashMap<>();
+    private final Map<UUID, Location> swapSpot = new HashMap<>();
+    /** true = ronde barusan di-void (seri karena cara mati sama), nextRound() ngulang ronde yang sama. */
+    private boolean replay = false;
 
     private World world;
     private Location spectatorLoc;
@@ -154,6 +181,7 @@ public class DeathSwapGame implements Match {
             World c = wc.createWorld();
             if (c == null) return false;
             world = c;
+            world.setDifficulty(Difficulty.NORMAL);
             world.setTime(1000L);
             world.setStorm(false);
             created = c;
@@ -162,6 +190,9 @@ public class DeathSwapGame implements Match {
 
         alive.clear();
         deathLocs.clear();
+        swappedAt.clear();
+        swapSpot.clear();
+        roundTrapCause.clear();
         state = State.LOADING;
 
         for (UUID id : roundOrder) {
@@ -178,43 +209,104 @@ public class DeathSwapGame implements Match {
         }
 
         int n = Math.max(roundOrder.size(), settings.testMode ? 2 : 0);
+        // titik acuan per pemain = spawn ronde sebelumnya (null kalau ronde 1)
+        List<Location> prevs = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            Location pv = null;
+            if (!this.spawns.isEmpty()) {
+                if (i < roundOrder.size()) pv = lastSpawn.get(roundOrder.get(i));
+                if (pv == null) pv = this.spawns.get(i % this.spawns.size());
+            }
+            prevs.add(pv);
+        }
         double radius = SPREAD_BASE + SPREAD_PER_PLAYER * n;
         double offset = ThreadLocalRandom.current().nextDouble() * 2.0 * Math.PI;
-        List<CompletableFuture<Location>> futs = new ArrayList<>();
+        List<Location> picked = new ArrayList<>();
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
         for (int i = 0; i < n; i++) {
-            futs.add(findSpawn(created, offset + 2.0 * Math.PI * i / n, radius, SPAWN_TRIES));
+            final int idx = i;
+            final int total = n;
+            chain = chain.thenCompose(v -> findSpawn(created, prevs.get(idx),
+                    offset + 2.0 * Math.PI * idx / total, radius, picked, SPAWN_TRIES, null, Integer.MAX_VALUE)
+                    .thenAccept(picked::add));
         }
         hudTask = Bukkit.getScheduler().runTaskTimer(plugin, this::updateHud, 5L, 5L);
-        CompletableFuture.allOf(futs.toArray(new CompletableFuture[0])).whenComplete((v, t) ->
-                Bukkit.getScheduler().runTask(plugin, () -> enterRound(created, prev, futs)));
+        chain.whenComplete((v, t) ->
+                Bukkit.getScheduler().runTask(plugin, () -> enterRound(created, prev, picked)));
         return true;
     }
 
-    private CompletableFuture<Location> findSpawn(World w, double angle, double radius, int tries) {
+    /**
+     * Cari 1 titik spawn. Ronde 1: cincin di sekitar 0,0. Ronde berikutnya: 500-1000 block dari titik
+     * spawn pemain ini sebelumnya. Titik ditolak kalau kebanyakan air atau terlalu dekat pemain lain.
+     * Kalau percobaan habis, pakai kandidat terbaik (air paling sedikit).
+     */
+    private CompletableFuture<Location> findSpawn(World w, Location prev, double angle, double radius,
+                                                  List<Location> taken, int tries, Location best, int bestPenalty) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
-        double a = angle + (rng.nextDouble() - 0.5) * 0.5;
-        double r = radius + (rng.nextDouble() - 0.5) * 80.0;
-        int x = (int) Math.round(r * Math.cos(a));
-        int z = (int) Math.round(r * Math.sin(a));
-        return w.getChunkAtAsync(x >> 4, z >> 4).thenCompose(chunk -> {
-            int y = w.getHighestBlockYAt(x, z);
-            if (tries > 0 && w.getBlockAt(x, y, z).isLiquid()) {
-                return findSpawn(w, angle, radius, tries - 1);
+        double cx, cz;
+        if (prev == null) {
+            double a = angle + (rng.nextDouble() - 0.5) * 0.5;
+            double r = radius + (rng.nextDouble() - 0.5) * 80.0;
+            cx = r * Math.cos(a);
+            cz = r * Math.sin(a);
+        } else {
+            double a = rng.nextDouble() * 2.0 * Math.PI;
+            double d = MOVE_MIN + rng.nextDouble() * (MOVE_MAX - MOVE_MIN);
+            cx = prev.getX() + d * Math.cos(a);
+            cz = prev.getZ() + d * Math.sin(a);
+        }
+        final int x = (int) Math.round(cx);
+        final int z = (int) Math.round(cz);
+
+        boolean gapOk = true;
+        for (Location t : taken) {
+            double dx = t.getX() - x, dz = t.getZ() - z;
+            if (dx * dx + dz * dz < MIN_GAP * MIN_GAP) { gapOk = false; break; }
+        }
+        final boolean gapOkF = gapOk;
+
+        List<CompletableFuture<?>> loads = new ArrayList<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                loads.add(w.getChunkAtAsync((x + dx * SAMPLE_STEP) >> 4, (z + dz * SAMPLE_STEP) >> 4));
             }
-            return CompletableFuture.completedFuture(new Location(w, x + 0.5, y + 1.0, z + 0.5));
+        }
+        return CompletableFuture.allOf(loads.toArray(new CompletableFuture[0])).thenCompose(v -> {
+            int water = 0;
+            boolean centerWet = false;
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    int sx = x + dx * SAMPLE_STEP, sz = z + dz * SAMPLE_STEP;
+                    int sy = w.getHighestBlockYAt(sx, sz);
+                    if (w.getBlockAt(sx, sy, sz).isLiquid()) {
+                        water++;
+                        if (dx == 0 && dz == 0) centerWet = true;
+                    }
+                }
+            }
+            int y = w.getHighestBlockYAt(x, z);
+            Location cand = new Location(w, x + 0.5, y + 1.0, z + 0.5);
+            boolean ok = !centerWet && water <= MAX_WATER_SAMPLES && gapOkF;
+            if (ok) return CompletableFuture.completedFuture(cand);
+            int penalty = water + (centerWet ? 20 : 0) + (gapOkF ? 0 : 20);
+            Location nb = best;
+            int np = bestPenalty;
+            if (penalty < bestPenalty) { nb = cand; np = penalty; }
+            if (tries <= 0) return CompletableFuture.completedFuture(nb != null ? nb : cand);
+            return findSpawn(w, prev, angle, radius, taken, tries - 1, nb, np);
         });
     }
 
-    private void enterRound(World w, World prev, List<CompletableFuture<Location>> futs) {
+    private void enterRound(World w, World prev, List<Location> picked) {
         if (state != State.LOADING || world != w) return;
-        List<Location> spawns = new ArrayList<>();
-        for (CompletableFuture<Location> f : futs) {
-            Location l = f.isCompletedExceptionally() ? null : f.join();
-            spawns.add(l != null ? l : w.getSpawnLocation());
-        }
+        List<Location> spawns = new ArrayList<>(picked);
+        int need = Math.max(roundOrder.size(), settings.testMode ? 2 : 0);
+        while (spawns.size() < need) spawns.add(w.getSpawnLocation());
         spectatorLoc = spawns.get(0);
         this.spawns = spawns;
         soloIdx = 0;
+        for (int i = 0; i < roundOrder.size() && i < spawns.size(); i++) lastSpawn.put(roundOrder.get(i), spawns.get(i));
 
         for (int i = 0; i < roundOrder.size(); i++) {
             Player p = Bukkit.getPlayer(roundOrder.get(i));
@@ -366,6 +458,7 @@ public class DeathSwapGame implements Match {
                 dest.setYaw(p.getLocation().getYaw());
                 dest.setPitch(p.getLocation().getPitch());
                 p.teleport(dest);
+                markSwap(p.getUniqueId(), dest);
             }
         } else if (ids.size() < 2) {
             return;
@@ -383,6 +476,7 @@ public class DeathSwapGame implements Match {
             dest.setYaw(p.getLocation().getYaw());
             dest.setPitch(p.getLocation().getPitch());
             p.teleport(dest);
+            markSwap(id, dest);
         }
         for (Player p : participants()) {
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_SWAP),
@@ -465,6 +559,7 @@ public class DeathSwapGame implements Match {
         cancelTasks();
         hideHud();
         for (Player p : participants()) p.sendActionBar(Component.empty());
+        commitTrapCauses();   // ronde dihitung: cara mati kena jebakan dicatat permanen
 
         String doneLabel = bonus ? "BONUS MATCH"
                 : "RONDE " + roundNo + (settings.rounds > 1 ? "/" + settings.rounds : "");
@@ -551,10 +646,11 @@ public class DeathSwapGame implements Match {
         if (!bonus) {
             roundOrder.clear();
             roundOrder.addAll(order);
-            roundNo++;
+            if (!replay) roundNo++;   // ronde di-void (cara mati sama) = nomor ronde sama, diulang
         } else {
             roundOrder.removeIf(id -> !order.contains(id));
         }
+        replay = false;
         if (!settings.testMode && roundOrder.size() < 2) {
             if (roundOrder.size() == 1) showChampion(roundOrder.get(0)); else showNone();
             return;
@@ -728,8 +824,150 @@ public class DeathSwapGame implements Match {
         }
         if (e.getFinalDamage() >= victim.getHealth()) {
             e.setCancelled(true);
-            eliminate(victim, causeText(e.getCause()));
+            handleDeath(victim, e.getCause());
         }
+    }
+
+    // ===== Aturan: gak boleh mati dengan cara jebakan yang sama dua kali =====
+
+    private void markSwap(UUID id, Location dest) {
+        swappedAt.put(id, System.currentTimeMillis());
+        swapSpot.put(id, dest.clone());
+    }
+
+    private int trapWindowSec() {
+        int cfg = plugin.getConfig().getInt("deathswap.trap-window-sec", DEFAULT_TRAP_WINDOW_SEC);
+        // jendela gak boleh lebih dari setengah interval TP, biar kematian sendiri di spot sendiri gak ikut kehitung
+        return Math.max(3, Math.min(cfg, settings.swapIntervalSec / 2));
+    }
+
+    private double trapRadius() {
+        return Math.max(5.0, plugin.getConfig().getDouble("deathswap.trap-radius", DEFAULT_TRAP_RADIUS));
+    }
+
+    /**
+     * Mati "kena jebakan lawan" = mati dalam {@link #trapWindowSec()} detik setelah TP DAN masih dalam
+     * {@link #trapRadius()} block (horizontal) dari titik tujuan TP. Selain itu dianggap kesalahan sendiri
+     * (nyebur lava sendiri, jatuh pas bangun jebakan, /kill, dll) dan lawan langsung menang.
+     */
+    private boolean isTrapDeath(Player p) {
+        UUID id = p.getUniqueId();
+        Long t = swappedAt.get(id);
+        Location spot = swapSpot.get(id);
+        if (t == null || spot == null) return false;
+        if (System.currentTimeMillis() - t > trapWindowSec() * 1000L) return false;
+        Location l = p.getLocation();
+        if (l.getWorld() == null || !l.getWorld().equals(spot.getWorld())) return false;
+        double dx = l.getX() - spot.getX();
+        double dz = l.getZ() - spot.getZ();
+        double r = trapRadius();
+        return dx * dx + dz * dz <= r * r;
+    }
+
+    /** Kelompokkan DamageCause jadi "cara mati". null = bukan cara yang dicek (bunuh diri / command / custom). */
+    private static String causeGroup(EntityDamageEvent.DamageCause c) {
+        if (c == null) return null;
+        return switch (c.name()) {
+            case "KILL", "SUICIDE", "CUSTOM", "WORLD_BORDER" -> null;
+            case "LAVA", "FIRE", "FIRE_TICK", "HOT_FLOOR", "CAMPFIRE", "MELTING" -> "BURN";
+            case "FALL", "FLY_INTO_WALL" -> "FALL";
+            case "DROWNING" -> "DROWN";
+            case "SUFFOCATION", "CRAMMING" -> "SUFFOCATE";
+            case "BLOCK_EXPLOSION", "ENTITY_EXPLOSION" -> "EXPLOSION";
+            case "ENTITY_ATTACK", "ENTITY_SWEEP_ATTACK", "PROJECTILE", "THORNS", "SONIC_BOOM", "DRAGON_BREATH" -> "MOB";
+            case "POISON", "MAGIC", "WITHER" -> "EFFECT";
+            default -> c.name();   // VOID, CONTACT, FALLING_BLOCK, FREEZE, STARVATION, LIGHTNING, DRYOUT, ...
+        };
+    }
+
+    private static String groupLabel(String g) {
+        return switch (g) {
+            case "BURN" -> "lava/api";
+            case "FALL" -> "fall damage";
+            case "VOID" -> "void";
+            case "DROWN" -> "tenggelam";
+            case "SUFFOCATE" -> "sesak napas";
+            case "EXPLOSION" -> "ledakan";
+            case "MOB" -> "serangan mob";
+            case "EFFECT" -> "racun/efek";
+            case "CONTACT" -> "kaktus/duri";
+            case "FALLING_BLOCK" -> "benda jatuh";
+            case "FREEZE" -> "beku";
+            case "STARVATION" -> "kelaparan";
+            case "LIGHTNING" -> "petir";
+            default -> g.toLowerCase().replace('_', ' ');
+        };
+    }
+
+    /** Titik masuk semua kematian pemain: tentuin jebakan / sendiri, cek cara mati yang sama, lalu eliminasi atau void ronde. */
+    private void handleDeath(Player p, EntityDamageEvent.DamageCause cause) {
+        UUID id = p.getUniqueId();
+        if (state != State.RUNNING || !alive.contains(id)) return;
+        if (!settings.uniqueDeath) {   // aturan dimatiin dari /panel: mati ya mati
+            eliminate(p, causeText(cause));
+            return;
+        }
+        String group = causeGroup(cause);
+        boolean trap = group != null && isTrapDeath(p);
+        if (trap) {
+            Set<String> seen = trapDeaths.get(id);
+            if (seen != null && seen.contains(group)) {
+                voidRound(p, group);
+                return;
+            }
+            roundTrapCause.put(id, group);
+        }
+        eliminate(p, causeText(cause) + (trap ? " (jebakan)" : " (sendiri)"));
+    }
+
+    private void commitTrapCauses() {
+        for (Map.Entry<UUID, String> en : roundTrapCause.entrySet()) {
+            trapDeaths.computeIfAbsent(en.getKey(), k -> new HashSet<>()).add(en.getValue());
+        }
+        roundTrapCause.clear();
+    }
+
+    /** Pemain mati kena jebakan dengan cara yang sama kayak ronde sebelumnya: seri, gak ada poin, ronde yang sama diulang. */
+    private void voidRound(Player victim, String group) {
+        if (state != State.RUNNING) return;
+        state = State.ENDED;
+        cancelTasks();
+        hideHud();
+        for (Player q : participants()) q.sendActionBar(Component.empty());
+        roundTrapCause.clear();   // ronde batal, cara mati di ronde ini gak dicatat
+        replay = true;
+
+        UUID vid = victim.getUniqueId();
+        Bukkit.getScheduler().runTask(plugin, () -> {   // tahan korban selama jeda (damage udah dicancel pas state ENDED)
+            if (!victim.isOnline() || victim.isDead()) return;
+            victim.setHealth(20.0);
+            victim.setFireTicks(0);
+            victim.setFallDistance(0f);
+            victim.setGameMode(GameMode.SPECTATOR);
+        });
+
+        String label = groupLabel(group);
+        String doneLabel = bonus ? "BONUS MATCH"
+                : "RONDE " + roundNo + (settings.rounds > 1 ? "/" + settings.rounds : "");
+        msg(Component.text("SERI! ", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD)
+                .append(Component.text(names.getOrDefault(vid, "?"), NamedTextColor.WHITE))
+                .append(Component.text(" mati kena " + label + " lagi, cara yang sama kayak ronde sebelumnya. "
+                        + doneLabel + " diulang, gak ada poin.", NamedTextColor.GRAY)));
+        msg(standings());
+
+        Title.Times times = Title.Times.times(Duration.ofMillis(300), Duration.ofMillis(3500), Duration.ofMillis(500));
+        Component head = heads.get(vid);
+        for (Player p : participants()) {
+            if (head != null && plugin.packReady(p)) {
+                p.showTitle(Title.title(WinScreen.title(Hud.BANNER_DRAW, List.of(head), plugin.headAdvance()),
+                        Component.text("Cara mati sama, ronde diulang", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD), times));
+            } else {
+                p.showTitle(Title.title(Component.text("SERI", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD),
+                        Component.text("Cara mati sama, ronde diulang", NamedTextColor.GRAY), times));
+            }
+            p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1f);
+        }
+        scheduleNext();
     }
 
     private String causeText(EntityDamageEvent.DamageCause cause) {
@@ -766,7 +1004,8 @@ public class DeathSwapGame implements Match {
     public void onDeath(Player p, PlayerDeathEvent e) {
         e.deathMessage(null);
         deathLocs.put(p.getUniqueId(), p.getLocation());
-        eliminate(p, "mati");
+        EntityDamageEvent last = p.getLastDamageCause();
+        handleDeath(p, last != null ? last.getCause() : null);
     }
 
     @Override

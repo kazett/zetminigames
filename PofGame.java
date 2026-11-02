@@ -16,6 +16,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
+import org.bukkit.Difficulty;
 import org.bukkit.FireworkEffect;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -181,6 +182,7 @@ public class PofGame implements Match {
         World prev = world;
         world = wc.createWorld();
         if (world == null) { world = prev; return false; }
+        world.setDifficulty(Difficulty.NORMAL);
         world.setTime(6000L);
         world.setStorm(false);
         world.setSpawnLocation(0, TOP_Y + 1, 0);

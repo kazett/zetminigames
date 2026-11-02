@@ -44,6 +44,7 @@ public final class Panels {
         String rounds = "1";
         boolean draw = false;
         boolean skip = true;
+        boolean unique = true;
         GameType type = GameType.POF;
         String swapText = "5m";
         String maceText = "15s";
@@ -162,6 +163,9 @@ public final class Panels {
                     Component.text("Random", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD), "RANDOM".equals(d.map)));
             inputs.add(DialogInput.singleOption("map", Component.text("Map"), maps).build());
         }
+        if (ds) {
+            inputs.add(DialogInput.bool("unique", Component.text("Gak boleh mati cara sama")).initial(d.unique).build());
+        }
         inputs.add(DialogInput.bool("draw", Component.text("Boleh seri")).initial(d.draw).build());
         inputs.add(DialogInput.bool("skip", Component.text("Stop kalau pasti menang")).initial(d.skip).build());
         inputs.add(DialogInput.bool("test", Component.text("Mode tes")).initial(d.test).build());
@@ -178,6 +182,7 @@ public final class Panels {
                     d.skip = Boolean.TRUE.equals(view.getBoolean("skip"));
                     d.test = Boolean.TRUE.equals(view.getBoolean("test"));
                     if (ds) {
+                        d.unique = Boolean.TRUE.equals(view.getBoolean("unique"));
                         d.swapText = nz(view.getText("swap"), "5m");
                     } else if (mace) {
                         d.maceText = nz(view.getText("mace"), "15s");
@@ -268,6 +273,7 @@ public final class Panels {
                         s.rounds = Math.max(1, parseRounds(d.rounds));
                         s.drawEnabled = d.draw;
                         s.skipClinched = d.skip;
+                        s.uniqueDeath = d.unique;
                         String err = plugin.manager().createLobby(host, picked, s);
                         if (err != null) openPlayers(plugin, host, d, err);
                     });

@@ -1,6 +1,9 @@
 package id.zetminigames.battleroyale;
 
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
@@ -16,6 +19,23 @@ public final class BrLoot {
     private static final int MAX_ITEMS = 10;
 
     private record Entry(Material material, int min, int max, int weight) {}
+
+    /** Peluang satu item loot (yang bisa dienchant) dapat 1 enchant. Sisanya polos. */
+    private static final double ENCHANT_CHANCE = 0.30;
+
+    /** Satu opsi enchant: key vanilla, level maksimal, bobot. Key yang gak ada di versi server dilewati. */
+    private record Opt(String key, int max, int weight) {}
+
+    private static final List<Opt> SWORD = List.of(new Opt("sharpness", 3, 6), new Opt("knockback", 1, 2), new Opt("fire_aspect", 1, 1));
+    private static final List<Opt> AXE = List.of(new Opt("sharpness", 2, 3), new Opt("efficiency", 3, 2));
+    private static final List<Opt> PICKAXE = List.of(new Opt("efficiency", 3, 3), new Opt("unbreaking", 2, 2));
+    private static final List<Opt> SPEAR = List.of(new Opt("sharpness", 2, 3), new Opt("lunge", 2, 2));
+    private static final List<Opt> ARMOR = List.of(new Opt("protection", 4, 6), new Opt("projectile_protection", 3, 2), new Opt("unbreaking", 2, 2));
+    private static final List<Opt> BOOTS = List.of(new Opt("protection", 4, 5), new Opt("feather_falling", 3, 3), new Opt("unbreaking", 2, 1));
+    private static final List<Opt> BOW = List.of(new Opt("power", 3, 5), new Opt("punch", 1, 1));
+    private static final List<Opt> CROSSBOW = List.of(new Opt("quick_charge", 2, 3), new Opt("piercing", 2, 2));
+    private static final List<Opt> MACE = List.of(new Opt("density", 2, 3), new Opt("wind_burst", 1, 1));
+    private static final List<Opt> SHIELD = List.of(new Opt("unbreaking", 2, 1));
 
     private static final List<Entry> POOL = new ArrayList<>();
     private static int totalWeight;
@@ -108,7 +128,58 @@ public final class BrLoot {
             Entry entry = pick(random);
             int amount = entry.min() >= entry.max() ? entry.min()
                     : entry.min() + random.nextInt(entry.max() - entry.min() + 1);
-            inventory.setItem(slots.get(i), new ItemStack(entry.material(), amount));
+            ItemStack stack = new ItemStack(entry.material(), amount);
+            enchant(stack, random);
+            inventory.setItem(slots.get(i), stack);
         }
+    }
+
+    private static List<Opt> optionsFor(String n) {
+        if (n.endsWith("_SWORD")) return SWORD;
+        if (n.endsWith("_AXE")) return AXE;
+        if (n.endsWith("_PICKAXE")) return PICKAXE;
+        if (n.endsWith("_SPEAR")) return SPEAR;
+        if (n.endsWith("_BOOTS")) return BOOTS;
+        if (n.endsWith("_HELMET") || n.endsWith("_CHESTPLATE") || n.endsWith("_LEGGINGS")) return ARMOR;
+        if (n.equals("BOW")) return BOW;
+        if (n.equals("CROSSBOW")) return CROSSBOW;
+        if (n.equals("MACE")) return MACE;
+        if (n.equals("SHIELD")) return SHIELD;
+        return null;
+    }
+
+    /** Tier gear: netherite level 1 aja, diamond maks 2, sisanya sampai level maksimal opsi. */
+    private static int cap(int max, String n) {
+        if (n.startsWith("NETHERITE")) return 1;
+        if (n.startsWith("DIAMOND")) return Math.min(max, 2);
+        return max;
+    }
+
+    /** Level condong rendah: untuk maks 4 -> 40% / 30% / 20% / 10% buat level 1 / 2 / 3 / 4. */
+    private static int rollLevel(int max, ThreadLocalRandom random) {
+        int total = max * (max + 1) / 2;
+        int r = random.nextInt(total);
+        for (int level = 1; level <= max; level++) {
+            r -= (max - level + 1);
+            if (r < 0) return level;
+        }
+        return 1;
+    }
+
+    private static void enchant(ItemStack stack, ThreadLocalRandom random) {
+        String n = stack.getType().name();
+        List<Opt> options = optionsFor(n);
+        if (options == null || random.nextDouble() >= ENCHANT_CHANCE) return;
+        int total = 0;
+        for (Opt o : options) total += o.weight();
+        int r = random.nextInt(total);
+        Opt chosen = options.get(0);
+        for (Opt o : options) {
+            r -= o.weight();
+            if (r < 0) { chosen = o; break; }
+        }
+        Enchantment ench = Registry.ENCHANTMENT.get(NamespacedKey.minecraft(chosen.key()));
+        if (ench == null) return;
+        stack.addUnsafeEnchantment(ench, rollLevel(cap(chosen.max(), n), random));
     }
 }
