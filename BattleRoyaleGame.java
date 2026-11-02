@@ -90,14 +90,29 @@ public class BattleRoyaleGame implements Match, Listener {
     private static final long NOON = 6000L;
     /** Ukuran zona awal (1000 = 1000x1000). */
     private static final double DEFAULT_START_SIZE = 1000.0;
-    /** Cari titik tengah daratan: maks sekian kandidat, berhenti kalau udah >= LAND_OK. */
-    private static final int CENTER_TRIES = 40;
-    private static final double LAND_OK = 0.92;
-    private static final int CENTER_SCAN_STEP = 50;
-    private static final Set<Biome> OCEAN_BIOMES = Set.of(
+    /** Cari titik tengah bebas salju/air: maks sekian kandidat, berhenti kalau porsi salju/air <= BAD_OK. */
+    private static final int CENTER_TRIES = 150;
+    /** Maks porsi biome salju/air yang masih diterima (0.0 = harus bersih total). */
+    private static final double BAD_OK = 0.01;
+    private static final int CENTER_SCAN_STEP = 32;
+
+    /** Biome salju & air: area arena diusahakan bebas dari ini, chest juga gak dipasang di sini. */
+    private static final Set<Biome> SNOW_BIOMES = Set.of(
+            Biome.SNOWY_PLAINS, Biome.ICE_SPIKES, Biome.SNOWY_TAIGA, Biome.SNOWY_BEACH, Biome.SNOWY_SLOPES,
+            Biome.FROZEN_PEAKS, Biome.JAGGED_PEAKS, Biome.GROVE, Biome.FROZEN_RIVER,
+            Biome.FROZEN_OCEAN, Biome.DEEP_FROZEN_OCEAN);
+    private static final Set<Biome> WATER_BIOMES = Set.of(
             Biome.OCEAN, Biome.DEEP_OCEAN, Biome.COLD_OCEAN, Biome.DEEP_COLD_OCEAN,
-            Biome.FROZEN_OCEAN, Biome.DEEP_FROZEN_OCEAN, Biome.LUKEWARM_OCEAN,
-            Biome.DEEP_LUKEWARM_OCEAN, Biome.WARM_OCEAN);
+            Biome.LUKEWARM_OCEAN, Biome.DEEP_LUKEWARM_OCEAN, Biome.WARM_OCEAN,
+            Biome.RIVER, Biome.SWAMP, Biome.MANGROVE_SWAMP);
+    private static final Set<Material> BAD_GROUND = Set.of(
+            Material.SNOW, Material.SNOW_BLOCK, Material.POWDER_SNOW, Material.ICE, Material.PACKED_ICE,
+            Material.BLUE_ICE, Material.FROSTED_ICE, Material.WATER, Material.KELP, Material.KELP_PLANT,
+            Material.SEAGRASS, Material.TALL_SEAGRASS, Material.BUBBLE_COLUMN);
+
+    private static boolean badBiome(Biome b) {
+        return SNOW_BIOMES.contains(b) || WATER_BIOMES.contains(b);
+    }
 
     private final ZetMinigames plugin;
     private final GameManager manager;
@@ -247,32 +262,32 @@ public class BattleRoyaleGame implements Match, Listener {
         for (int i = 0; i < CENTER_TRIES; i++) {
             int x = i == 0 ? 0 : random.nextInt(-8000, 8001);
             int z = i == 0 ? 0 : random.nextInt(-8000, 8001);
-            double land = landFraction(x, z, size);
+            double land = 1.0 - badFraction(x, z, size);
             if (land > best) {
                 best = land;
                 bestX = x;
                 bestZ = z;
             }
-            if (land >= LAND_OK) break;
+            if (1.0 - land <= BAD_OK) break;
         }
         centerX = bestX;
         centerZ = bestZ;
         plugin.getLogger().info("Battle Royale: titik tengah " + centerX + ", " + centerZ
-                + " (daratan " + Math.round(best * 100) + "%)");
+                + " (bersih salju/air " + Math.round(best * 100) + "%)");
     }
 
-    /** Persentase titik (grid kasar) di area zona awal yang BUKAN laut. */
-    private double landFraction(int cx, int cz, double size) {
+    /** Porsi titik (grid kasar) di area zona awal yang biome-nya salju atau air. */
+    private double badFraction(int cx, int cz, double size) {
         int half = (int) (size / 2.0);
-        int land = 0;
+        int bad = 0;
         int total = 0;
         for (int x = cx - half; x <= cx + half; x += CENTER_SCAN_STEP) {
             for (int z = cz - half; z <= cz + half; z += CENTER_SCAN_STEP) {
                 total++;
-                if (!OCEAN_BIOMES.contains(world.getBiome(x, 64, z))) land++;
+                if (badBiome(world.getBiome(x, 64, z)) || SNOW_BIOMES.contains(world.getBiome(x, 120, z))) bad++;
             }
         }
-        return total == 0 ? 0.0 : land / (double) total;
+        return total == 0 ? 1.0 : bad / (double) total;
     }
 
     private void loadCenter(int cx, int cz) {
@@ -402,7 +417,10 @@ public class BattleRoyaleGame implements Match, Listener {
                 int dz = z - centerZ;
                 if (dx * dx + dz * dz <= skyR * skyR) continue;
                 int y = world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING_NO_LEAVES);
-                if (world.getBlockAt(x, y, z).isLiquid()) continue;
+                Block ground = world.getBlockAt(x, y, z);
+                if (ground.isLiquid() || BAD_GROUND.contains(ground.getType())) continue;
+                if (BAD_GROUND.contains(world.getBlockAt(x, y - 1, z).getType())) continue;
+                if (badBiome(world.getBiome(x, y, z))) continue;
                 Block spot = world.getBlockAt(x, y + 1, z);
                 if (!spot.isEmpty() && !Tag.LEAVES.isTagged(spot.getType())) continue;
                 spot.setType(Material.CHEST, false);
@@ -476,7 +494,7 @@ public class BattleRoyaleGame implements Match, Listener {
             bars.put(id, bar);
             p.showBossBar(bar);
         }
-        bar.name(Hud.buildBr(new Hud.BrData("BERSIAP", 0xFFD23C, timer, left / (double) Math.max(1, total),
+        bar.name(Hud.buildBr(new Hud.BrData("READY", 0x5AD2FF, timer, left / (double) Math.max(1, total),
                 "PVP " + Hud.fmtTime(pvpDelaySec()), 0xFFAA55, alive.size(), Math.max(startCount, alive.size()),
                 0, "", 0x55FF55, 0, testMode)));
     }
@@ -538,7 +556,7 @@ public class BattleRoyaleGame implements Match, Listener {
                 for (Player p : participants()) {
                     CustomTitle.show(plugin, p, CustomTitle.count(n),
                             Component.text(String.valueOf(n), NamedTextColor.YELLOW, TextDecoration.BOLD),
-                            Component.text("Siap-siap!", NamedTextColor.GRAY),
+                            Component.text("Get ready!", NamedTextColor.GRAY),
                             Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(100)));
                     p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
                 }
@@ -564,8 +582,8 @@ public class BattleRoyaleGame implements Match, Listener {
             falling.add(id);
             p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, SLOW_FALL_TICKS, 0, false, false));
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_GO),
-                    Component.text("MULAI!", NamedTextColor.GREEN, TextDecoration.BOLD),
-                    Component.text("Cari loot", NamedTextColor.GRAY),
+                    Component.text("GO!", NamedTextColor.GREEN, TextDecoration.BOLD),
+                    Component.text("Find loot", NamedTextColor.GRAY),
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1200), Duration.ofMillis(300)));
             p.playSound(p.getLocation(), Sound.BLOCK_GLASS_BREAK, 1f, 1f);
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
@@ -602,12 +620,12 @@ public class BattleRoyaleGame implements Match, Listener {
             if (sec < shrinkAt[i]) {
                 int span = Math.max(1, shrinkAt[i] - prevEnd);
                 int left = shrinkAt[i] - sec;
-                return new Phase("ZONA", 0xFFD23C, left, left / (double) span, false, false);
+                return new Phase("ZONE", 0x5AD2FF, left, left / (double) span, false, false);
             }
             int endAt = shrinkAt[i] + shrinkLen[i];
             if (sec < endAt) {
                 int left = endAt - sec;
-                return new Phase("MENGECIL", 0xFF5555, left, left / (double) Math.max(1, shrinkLen[i]), true, false);
+                return new Phase("SHRINK", 0xFF5555, left, left / (double) Math.max(1, shrinkLen[i]), true, false);
             }
         }
         return new Phase("FINAL", 0xFF5555, 0, 0.0, false, true);
@@ -642,14 +660,11 @@ public class BattleRoyaleGame implements Match, Listener {
                         .append(Component.text(from + " → " + sizes[i] + "  (" + Hud.fmtTime(shrinkLen[i]) + ")", NamedTextColor.YELLOW)));
             }
 
-            // peringatan sebelum zona mengecil (30s, 10s) — chat saja, gak title tengah. 5..1 cuma sound.
+            // peringatan sebelum zona mengecil: 5..1 cuma sound (timer sudah di HUD, chat dikurangi)
             if (nextShrink < shrinkAt.length) {
                 int i = nextShrink;
                 int left = shrinkAt[i] - sec;
-                if ((left == 30 || left == 10) && warned.add(i + ":" + left)) {
-                    msg(Component.text("Zona mengecil dalam " + left + "s", NamedTextColor.YELLOW));
-                    for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
-                } else if (left >= 1 && left <= 5 && warned.add(i + ":" + left)) {
+                if (left >= 1 && left <= 5 && warned.add(i + ":" + left)) {
                     for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.6f);
                 }
             }
@@ -694,7 +709,7 @@ public class BattleRoyaleGame implements Match, Listener {
 
         boolean outside = edge < 0;
         int distColor = outside ? 0xFF5555 : edge < 15 ? 0xFFAA00 : 0x55FF55;
-        String distText = outside ? "LUAR " + (int) Math.ceil(-edge) + "m" : "TEPI " + (int) edge + "m";
+        String distText = outside ? "OUT " + (int) Math.ceil(-edge) + "m" : "EDGE " + (int) edge + "m";
         String pvpText = pvpOn ? "PVP ON" : "PVP " + Hud.fmtTime(pvpLeft);
         int pvpColor = pvpOn ? 0xFF5555 : 0xFFAA55;
         String timer = clock(sec);
@@ -784,8 +799,8 @@ public class BattleRoyaleGame implements Match, Listener {
 
     private void showEliminated(Player p) {
         CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_ELIM),
-                Component.text("TERELIMINASI", NamedTextColor.RED, TextDecoration.BOLD),
-                Component.text("Nonton aja", NamedTextColor.GRAY),
+                Component.text("ELIMINATED", NamedTextColor.RED, TextDecoration.BOLD),
+                Component.text("Spectating", NamedTextColor.GRAY),
                 Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(3000), Duration.ofMillis(500)));
     }
 
@@ -821,11 +836,11 @@ public class BattleRoyaleGame implements Match, Listener {
         Title.Times times = Title.Times.times(Duration.ofMillis(400), Duration.ofSeconds(6), Duration.ofMillis(800));
         if (winner == null) {
             for (Player p : participants()) {
-                p.showTitle(Title.title(Component.text("GAME SELESAI", NamedTextColor.GRAY, TextDecoration.BOLD),
-                        Component.text("Gak ada pemenang", NamedTextColor.DARK_GRAY), times));
+                p.showTitle(Title.title(Component.text("GAME OVER", NamedTextColor.GRAY, TextDecoration.BOLD),
+                        Component.text("No winner", NamedTextColor.DARK_GRAY), times));
             }
         } else {
-            msg(Component.text("Pemenang: ", NamedTextColor.GOLD)
+            msg(Component.text("Winner: ", NamedTextColor.GOLD)
                     .append(Component.text(names.get(winner), NamedTextColor.YELLOW, TextDecoration.BOLD)));
             Component head = heads.get(winner);
             for (Player p : participants()) {
@@ -833,7 +848,7 @@ public class BattleRoyaleGame implements Match, Listener {
                     p.showTitle(Title.title(WinScreen.title(head, plugin.headAdvance()),
                             WinScreen.subtitle(names.get(winner)), times));
                 } else {
-                    p.showTitle(Title.title(Component.text("MENANG!", NamedTextColor.GOLD, TextDecoration.BOLD),
+                    p.showTitle(Title.title(Component.text("WINNER!", NamedTextColor.GOLD, TextDecoration.BOLD),
                             Component.text(names.get(winner), NamedTextColor.YELLOW), times));
                 }
                 p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);

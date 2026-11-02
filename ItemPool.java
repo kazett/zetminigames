@@ -26,7 +26,7 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Pool item Pillar of Fortune (v24b): SEMUA Material valid, peluang sama (100% random).
+ * Pool item Pillar of Fortune (v24b): SEMUA Material valid, 100% random. Armor + senjata PvP bobot x1.3 (30% lebih sering).
  * - Jumlah selalu 1 (gak pernah stack > 1).
  * - Item yang sama gak boleh berturut-turut (GAP_BETWEEN = 1).
  * - Varian acak: potion, enchanted book, player head, goat horn.
@@ -45,7 +45,18 @@ public final class ItemPool {
             "DEBUG_STICK", "KNOWLEDGE_BOOK", "TEST_BLOCK", "TEST_INSTANCE_BLOCK",
             "SPAWNER", "TRIAL_SPAWNER", "VAULT", "REINFORCED_DEEPSLATE", "FARMLAND"));
 
-    private record Entry(Material mat, boolean block) {}
+    /** Armor + senjata/tool PvP muncul 30% lebih sering dari item lain (tetap random). */
+    static final double PVP_BOOST = 1.3;
+
+    private static boolean pvp(Material m) {
+        String n = m.name();
+        return n.endsWith("_HELMET") || n.endsWith("_CHESTPLATE") || n.endsWith("_LEGGINGS") || n.endsWith("_BOOTS")
+                || n.endsWith("_SWORD") || n.endsWith("_AXE") || n.endsWith("_SPEAR")
+                || n.equals("BOW") || n.equals("CROSSBOW") || n.equals("MACE")
+                || n.equals("TRIDENT") || n.equals("SHIELD");
+    }
+
+    private record Entry(Material mat, boolean block, double weight) {}
 
     private static final List<Entry> POOL = new ArrayList<>();
     private static final List<PotionType> POTIONS = new ArrayList<>();
@@ -63,7 +74,7 @@ public final class ItemPool {
 
         for (Material m : Material.values()) {
             if (!valid(m)) continue;
-            POOL.add(new Entry(m, m.isBlock()));
+            POOL.add(new Entry(m, m.isBlock(), pvp(m) ? PVP_BOOST : 1.0));
         }
     }
 
@@ -137,10 +148,14 @@ public final class ItemPool {
                 ok.add(e);
             }
             Entry pick;
-            if (ok.isEmpty()) {
-                pick = POOL.get(ThreadLocalRandom.current().nextInt(POOL.size()));
-            } else {
-                pick = ok.get(ThreadLocalRandom.current().nextInt(ok.size()));
+            List<Entry> src = ok.isEmpty() ? POOL : ok;
+            double total = 0;
+            for (Entry e : src) total += e.weight;
+            double roll = ThreadLocalRandom.current().nextDouble() * total;
+            pick = src.get(src.size() - 1);
+            for (Entry e : src) {
+                roll -= e.weight;
+                if (roll < 0) { pick = e; break; }
             }
 
             s.last.put(pick.mat, s.draws);

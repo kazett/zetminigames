@@ -297,7 +297,7 @@ public class MaceGame implements Match {
 
     private String roundSubtitle() {
         if (bonus) return "BONUS MATCH";
-        return settings.rounds > 1 ? "Ronde " + roundNo + "/" + settings.rounds : "Siap-siap!";
+        return settings.rounds > 1 ? "Round " + roundNo + "/" + settings.rounds : "Get ready!";
     }
 
     private void prepare(Player p) {
@@ -347,7 +347,7 @@ public class MaceGame implements Match {
         updateHud();
         for (Player p : participants()) {
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_READY),
-                    Component.text("BERSIAP", NamedTextColor.AQUA, TextDecoration.BOLD),
+                    Component.text("READY", NamedTextColor.AQUA, TextDecoration.BOLD),
                     Component.text("Tunggu semua", NamedTextColor.GRAY),
                     Title.Times.times(Duration.ZERO, Duration.ofSeconds(PREP_SEC), Duration.ZERO));
         }
@@ -458,7 +458,7 @@ public class MaceGame implements Match {
         for (Player p : participants()) {
             boolean h = p.getUniqueId().equals(holder);
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_GO),
-                    Component.text("MULAI!", NamedTextColor.GREEN, TextDecoration.BOLD),
+                    Component.text("GO!", NamedTextColor.GREEN, TextDecoration.BOLD),
                     Component.text(h ? "Bunuh!" : "Hindari!", NamedTextColor.GRAY),
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1000), Duration.ofMillis(200)));
             p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
@@ -526,7 +526,7 @@ public class MaceGame implements Match {
 
     private String topText() {
         return switch (phase) {
-            case INTRO, READY -> prepLeft > 0 ? "MULAI " + prepLeft + "s" : "SIAP";
+            case INTRO, READY -> prepLeft > 0 ? "START " + prepLeft + "s" : "READY";
             case SPIN -> "ROULETTE";
             case ATTEMPT -> "MACE " + Math.max(0, (int) Math.ceil((deadline - System.currentTimeMillis()) / 1000.0)) + "s";
             case RESOLVE -> "RESET";
@@ -588,8 +588,8 @@ public class MaceGame implements Match {
             p.setGameMode(GameMode.SPECTATOR);
             p.teleport(spectatorLoc);
             CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_ELIM),
-                    Component.text("TERELIMINASI", NamedTextColor.RED, TextDecoration.BOLD),
-                    Component.text("Nonton aja", NamedTextColor.GRAY),
+                    Component.text("ELIMINATED", NamedTextColor.RED, TextDecoration.BOLD),
+                    Component.text("Spectating", NamedTextColor.GRAY),
                     Title.Times.times(Duration.ofMillis(100), Duration.ofMillis(3000), Duration.ofMillis(500)));
         });
         updateHud();
@@ -727,7 +727,7 @@ public class MaceGame implements Match {
                         WinScreen.subtitle(names.get(winner)), times));
             } else {
                 p.showTitle(Title.title(Component.text(label, NamedTextColor.GOLD, TextDecoration.BOLD),
-                        Component.text(winner != null ? names.get(winner) : "Gak ada pemenang", NamedTextColor.YELLOW), times));
+                        Component.text(winner != null ? names.get(winner) : "No winner", NamedTextColor.YELLOW), times));
             }
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
         }
@@ -735,7 +735,7 @@ public class MaceGame implements Match {
     }
 
     private void showChampion(UUID winner) {
-        msg(Component.text("Pemenang: ", NamedTextColor.GOLD)
+        msg(Component.text("Winner: ", NamedTextColor.GOLD)
                 .append(Component.text(names.get(winner), NamedTextColor.YELLOW, TextDecoration.BOLD)));
         if (settings.rounds > 1 || bonus) msg(standings());
         Title.Times times = Title.Times.times(Duration.ofMillis(400), Duration.ofSeconds(6), Duration.ofMillis(800));
@@ -745,7 +745,7 @@ public class MaceGame implements Match {
                 p.showTitle(Title.title(WinScreen.title(head, plugin.headAdvance()),
                         WinScreen.subtitle(names.get(winner)), times));
             } else {
-                p.showTitle(Title.title(Component.text("MENANG!", NamedTextColor.GOLD, TextDecoration.BOLD),
+                p.showTitle(Title.title(Component.text("WINNER!", NamedTextColor.GOLD, TextDecoration.BOLD),
                         Component.text(names.get(winner), NamedTextColor.YELLOW), times));
             }
             p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
@@ -756,7 +756,7 @@ public class MaceGame implements Match {
 
     private void showDraw(List<UUID> top) {
         int w = wins.getOrDefault(top.get(0), 0);
-        msg(Component.text("SERI! ", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD)
+        msg(Component.text("DRAW! ", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD)
                 .append(Component.text(joinNames(top) + " (" + w + " win)", NamedTextColor.WHITE)));
         msg(standings());
         List<Component> hs = new ArrayList<>();
@@ -772,7 +772,7 @@ public class MaceGame implements Match {
                 p.showTitle(Title.title(WinScreen.title(Hud.BANNER_DRAW, hs, plugin.headAdvance()),
                         WinScreen.subtitleNames(nm), times));
             } else {
-                p.showTitle(Title.title(Component.text("SERI", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD),
+                p.showTitle(Title.title(Component.text("DRAW", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD),
                         Component.text(joinNames(top), NamedTextColor.WHITE), times));
             }
             p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1f);
@@ -783,8 +783,8 @@ public class MaceGame implements Match {
     private void showNone() {
         Title.Times times = Title.Times.times(Duration.ofMillis(400), Duration.ofSeconds(6), Duration.ofMillis(800));
         for (Player p : participants()) {
-            p.showTitle(Title.title(Component.text("GAME SELESAI", NamedTextColor.GRAY, TextDecoration.BOLD),
-                    Component.text("Gak ada pemenang", NamedTextColor.DARK_GRAY), times));
+            p.showTitle(Title.title(Component.text("GAME OVER", NamedTextColor.GRAY, TextDecoration.BOLD),
+                    Component.text("No winner", NamedTextColor.DARK_GRAY), times));
         }
         endTask = Bukkit.getScheduler().runTaskLater(plugin, this::cleanup, 160L);
     }

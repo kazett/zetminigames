@@ -6,6 +6,8 @@ import org.bukkit.Registry;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.potion.PotionType;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,7 +20,7 @@ public final class BrLoot {
     private static final int MIN_ITEMS = 3;
     private static final int MAX_ITEMS = 10;
 
-    private record Entry(Material material, int min, int max, int weight) {}
+    private record Entry(Material material, int min, int max, int weight, PotionType potion) {}
 
     /** Peluang satu item loot (yang bisa dienchant) dapat 1 enchant. Sisanya polos. */
     private static final double ENCHANT_CHANCE = 0.30;
@@ -41,7 +43,13 @@ public final class BrLoot {
     private static int totalWeight;
 
     private static void add(Material material, int min, int max, int weight) {
-        POOL.add(new Entry(material, min, max, weight));
+        POOL.add(new Entry(material, min, max, weight, null));
+        totalWeight += weight;
+    }
+
+    /** Potion drinkable dengan tipe tertentu (cuma 4 jenis yang dipakai di loot BR). */
+    private static void addPotion(PotionType type, int weight) {
+        POOL.add(new Entry(Material.POTION, 1, 1, weight, type));
         totalWeight += weight;
     }
 
@@ -99,6 +107,12 @@ public final class BrLoot {
         addNamed("COPPER_SPEAR", 1, 1, 6);
         addNamed("IRON_SPEAR", 1, 1, 5);
         addNamed("DIAMOND_SPEAR", 1, 1, 1);
+        // Totem + 4 potion (swiftness, healing, invisibility, fire resistance). Atur bobot (angka terakhir) kalau kurang/kebanyakan.
+        add(Material.TOTEM_OF_UNDYING, 1, 1, 3);
+        addPotion(PotionType.SWIFTNESS, 5);
+        addPotion(PotionType.HEALING, 5);
+        addPotion(PotionType.INVISIBILITY, 4);
+        addPotion(PotionType.FIRE_RESISTANCE, 4);
         add(Material.COBBLESTONE, 12, 32, 12);
         add(Material.OAK_PLANKS, 12, 32, 12);
     }
@@ -129,6 +143,10 @@ public final class BrLoot {
             int amount = entry.min() >= entry.max() ? entry.min()
                     : entry.min() + random.nextInt(entry.max() - entry.min() + 1);
             ItemStack stack = new ItemStack(entry.material(), amount);
+            if (entry.potion() != null && stack.getItemMeta() instanceof PotionMeta pm) {
+                pm.setBasePotionType(entry.potion());
+                stack.setItemMeta(pm);
+            }
             enchant(stack, random);
             inventory.setItem(slots.get(i), stack);
         }
