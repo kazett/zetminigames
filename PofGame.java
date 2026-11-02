@@ -44,6 +44,7 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -70,6 +71,12 @@ public class PofGame implements Match {
     /** Ukuran border akhir saat mengecil. */
     static final double FINAL_BORDER_SIZE = 6.0;
     static final int COUNTDOWN_SEC = 5;
+    /** Waktu siap-siap (detik) sebelum countdown 5..1: pemain udah di pilar tapi belum bisa gerak (nunggu semua kelar load). */
+    static final int READY_SEC = 10;
+    /** Cadangan kalau world null: lava maks sekian block di atas puncak pilar. */
+    static final int LAVA_ABOVE_TOP = 4;
+    /** Batas jumlah block lava yang di-set per tick (biar gak lag pas lapisan baru dibikin). */
+    private static final int LAVA_BLOCKS_PER_TICK = 1500;
 
     private final ZetMinigames plugin;
     private final GameManager manager;
@@ -93,6 +100,8 @@ public class PofGame implements Match {
     private State state = State.COUNTDOWN;
     private BukkitTask countdownTask, tickTask, endTask;
     private int nextItem;
+    /** Detik sampai game mulai (siap-siap + countdown), 0 kalau udah jalan. Buat HUD. */
+    private int readyLeft;
     private int elapsed;
     private boolean shrinking;
     private long periodStart;
@@ -100,6 +109,11 @@ public class PofGame implements Match {
     private BukkitTask hudTask;
     private PofMap map, lastMap;
     private int lavaY = FLOOR_Y;
+    /** Detik (sejak mulai) saat lava terakhir naik. */
+    private int lavaLast;
+    /** Radius lantai bulat (block). */
+    private int floorRadius;
+    private final List<BukkitTask> lavaTasks = new ArrayList<>();
     private final Map<UUID, Component> heads = new HashMap<>();
 
     public PofGame(ZetMinigames plugin, GameManager manager, List<Player> players, GameSettings settings) {
@@ -157,6 +171,8 @@ public class PofGame implements Match {
         WorldCreator wc = new WorldCreator("pof_" + Long.toString(System.currentTimeMillis(), 36));
         wc.generator(new VoidGenerator());
         wc.generateStructures(false);
+        for (BukkitTask t : lavaTasks) t.cancel();
+        lavaTasks.clear();
         World prev = world;
         world = wc.createWorld();
         if (world == null) { world = prev; return false; }
@@ -164,29 +180,28 @@ public class PofGame implements Match {
         world.setStorm(false);
         world.setSpawnLocation(0, TOP_Y + 1, 0);
 
-        // Pilar disusun melingkar, jarak antar pilar sebelahan >= PILLAR_SPACING.
-        // 4 pemain => kotak 10x10.
-        double radius = PILLAR_SPACING / (2.0 * Math.sin(Math.PI / n));
+        // Pilar: cincin luar (maks 10) + sisanya di dalam, semua berjarak >= PILLAR_SPACING (lihat PillarLayout).
+        List<int[]> pillars = PillarLayout.compute(n, PILLAR_SPACING, ThreadLocalRandom.current().nextLong());
+        double radius = PillarLayout.maxRadius(pillars);
         int maxAbs = 0;
         List<Location> spawns = new ArrayList<>();
-        List<int[]> pillars = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            double ang = Math.PI / n + 2.0 * Math.PI * i / n;
-            int x = (int) Math.round(radius * Math.cos(ang));
-            int z = (int) Math.round(radius * Math.sin(ang));
-            pillars.add(new int[]{x, z});
+        for (int[] pl : pillars) {
+            int x = pl[0];
+            int z = pl[1];
             // Hadap ke tengah
             float yaw = (float) Math.toDegrees(Math.atan2(x, -z));
             spawns.add(new Location(world, x + 0.5, TOP_Y + 1, z + 0.5, yaw, 0f));
             maxAbs = Math.max(maxAbs, Math.max(Math.abs(x), Math.abs(z)));
         }
+        Collections.shuffle(spawns);   // posisi tiap pemain diacak tiap ronde (luar / dalam adil)
         spectatorLoc = new Location(world, 0.5, TOP_Y + 10, 0.5);
 
         // Map (lantai) + pilar dari lantai ke atas
         map = chooseMap();
-        buildFloor(map, (int) Math.ceil(radius) + BORDER_MARGIN);
+        floorRadius = (int) Math.ceil(radius) + BORDER_MARGIN;
+        buildFloor(map, floorRadius);
         for (int[] pl : pillars) {
-            for (int y = FLOOR_Y + 1; y <= TOP_Y; y++) {
+            for (int y = FLOOR_Y; y <= TOP_Y; y++) {
                 world.getBlockAt(pl[0], y, pl[1]).setType(Material.BEDROCK, false);
             }
         }
@@ -204,6 +219,7 @@ public class PofGame implements Match {
         hits.clear();
         shrinking = false;
         lavaY = FLOOR_Y;
+        lavaLast = 0;   // lava langsung jalan begitu countdown kelar (naik pertama di detik ke-25)
         elapsed = 0;
 
         // Teleport pemain yang main ronde ini; anggota lain (bonus match) jadi penonton
@@ -234,13 +250,32 @@ public class PofGame implements Match {
         hudTask = Bukkit.getScheduler().runTaskTimer(plugin, this::updateHud, 5L, 5L);
 
         state = State.COUNTDOWN;
+        readyLeft = READY_SEC + COUNTDOWN_SEC;
+        updateHud();
         countdownTask = new org.bukkit.scheduler.BukkitRunnable() {
             int c = COUNTDOWN_SEC;
+            int wait = READY_SEC;
 
             @Override
             public void run() {
                 if (state == State.ENDED) { cancel(); return; }
+                if (wait > 0) {
+                    readyLeft = wait + c;
+                    if (wait == READY_SEC) {   // banner BERSIAP custom, tampil selama masa siap-siap
+                        for (Player p : participants()) {
+                            CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_READY),
+                                    Component.text("BERSIAP", NamedTextColor.AQUA, TextDecoration.BOLD),
+                                    Component.text("Tunggu semua siap", NamedTextColor.GRAY),
+                                    Title.Times.times(Duration.ZERO, Duration.ofSeconds(READY_SEC), Duration.ZERO));
+                        }
+                    }
+                    updateHud();
+                    wait--;
+                    return;
+                }
                 if (c > 0) {
+                    readyLeft = c;
+                    updateHud();
                     for (Player p : participants()) {
                         CustomTitle.show(plugin, p, CustomTitle.count(c),
                                 Component.text(String.valueOf(c), NamedTextColor.YELLOW, TextDecoration.BOLD),
@@ -264,7 +299,7 @@ public class PofGame implements Match {
 
     private String roundLabel() {
         if (bonus) return "BONUS";
-        return settings.rounds > 1 ? "R " + roundNo + "/" + settings.rounds : "";
+        return settings.rounds > 1 ? "R" + roundNo + "/" + settings.rounds : "";
     }
 
     private String roundSubtitle() {
@@ -290,6 +325,7 @@ public class PofGame implements Match {
 
     private void startRunning() {
         state = State.RUNNING;
+        readyLeft = 0;
         elapsed = 0;
         nextItem = settings.itemIntervalSec;
         periodStart = System.currentTimeMillis();
@@ -300,6 +336,7 @@ public class PofGame implements Match {
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1000), Duration.ofMillis(200)));
             p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
         }
+        if (map == PofMap.LAVA) msg(Component.text("Lava mulai naik! Makin lama makin cepat.", NamedTextColor.RED, TextDecoration.BOLD));
         tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
     }
 
@@ -319,11 +356,7 @@ public class PofGame implements Match {
             world.getWorldBorder().setSize(FINAL_BORDER_SIZE, settings.speed.durationSec);
             msg(Component.text("Border mengecil!", NamedTextColor.RED, TextDecoration.BOLD));
         }
-        if (map == PofMap.LAVA && elapsed >= settings.shrinkStartSec && lavaY < TOP_Y + 4) {
-            if (lavaY == FLOOR_Y) msg(Component.text("Lava naik!", NamedTextColor.RED, TextDecoration.BOLD));
-            lavaY++;
-            fillLava(lavaY);
-        }
+        if (map == PofMap.LAVA) tickLava();
         sendHud();
     }
 
@@ -340,6 +373,19 @@ public class PofGame implements Match {
 
     private void buildFloor(PofMap m, int half) {
         if (m == PofMap.VOID) return;
+        if (m == PofMap.LAVA) {
+            // Danau lava: dasar bedrock (biar lava gak netes ke void) + 1 lapis lava di FLOOR_Y.
+            // Lapisan berikutnya ditambah pelan-pelan oleh tickLava().
+            for (int x = -half - 1; x <= half + 1; x++) {
+                for (int z = -half - 1; z <= half + 1; z++) {
+                    int d2 = x * x + z * z;
+                    if (d2 > (half + 1) * (half + 1)) continue;
+                    set(x, FLOOR_Y - 1, z, Material.BEDROCK);
+                    if (d2 <= half * half) set(x, FLOOR_Y, z, Material.LAVA);
+                }
+            }
+            return;
+        }
         // Lantai bulat, 1 lapis block aja (di bawahnya void)
         Material mat = switch (m) {
             case SLIME -> Material.SLIME_BLOCK;
@@ -348,7 +394,7 @@ public class PofGame implements Match {
             case COBWEB -> Material.COBWEB;
             case TNT -> Material.TNT;
             case SNOW -> Material.POWDER_SNOW;
-            default -> Material.STONE;   // LAVA: lantai biasa, lava naik nanti
+            default -> Material.STONE;
         };
         for (int x = -half; x <= half; x++) {
             for (int z = -half; z <= half; z++) {
@@ -362,17 +408,72 @@ public class PofGame implements Match {
         world.getBlockAt(x, y, z).setType(m, false);
     }
 
-    /** Satu lapis lava di ketinggian y, di area border yang sekarang (blok kosong aja). */
-    private void fillLava(int y) {
-        if (world == null) return;
-        int half = (int) Math.ceil(world.getWorldBorder().getSize() / 2.0);
-        for (int x = -half; x <= half; x++) {
-            for (int z = -half; z <= half; z++) {
-                if (x * x + z * z > half * half) continue;
-                Block b = world.getBlockAt(x, y, z);
-                if (b.getType().isAir()) b.setType(Material.LAVA, false);
+    // ===================== LAVA RISING =====================
+
+    /**
+     * Jadwal lava (detik sejak game mulai): {jeda detik, jumlah block sekali naik}.
+     * 0-2 menit: tiap 25s naik 1 | 2-3 menit: tiap 20s naik 2 | 3-5 menit: tiap 15s naik 3 | 5 menit dst: tiap 10s naik 5.
+     */
+    static int[] lavaStep(int sec) {
+        if (sec < 120) return new int[]{25, 1};
+        if (sec < 180) return new int[]{20, 2};
+        if (sec < 300) return new int[]{15, 3};
+        return new int[]{10, 5};
+    }
+
+    static int lavaInterval(int sec) {
+        return lavaStep(sec)[0];
+    }
+
+    /** Lava naik terus sampai batas atas world (limit build). */
+    private int lavaMaxY() {
+        return world != null ? world.getMaxHeight() - 1 : TOP_Y + LAVA_ABOVE_TOP;
+    }
+
+    private void tickLava() {
+        if (lavaY >= lavaMaxY()) return;
+        int[] step = lavaStep(elapsed);
+        if (elapsed - lavaLast < step[0]) return;
+        lavaLast = elapsed;
+        int from = lavaY + 1;
+        lavaY = Math.min(lavaMaxY(), lavaY + step[1]);
+        fillLayers(world, from, lavaY);
+        for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_LAVA_POP, 1f, 0.8f);
+    }
+
+    /** Detik sampai lava naik lagi; -1 kalau udah mentok. */
+    private int lavaNextIn() {
+        if (lavaY >= lavaMaxY()) return -1;
+        return Math.max(0, lavaLast + lavaInterval(elapsed) - elapsed);
+    }
+
+    /** Isi lapisan lava dari y1 sampai y2 (cuma block kosong), dicicil beberapa tick biar server gak lag. */
+    private void fillLayers(World w, int y1, int y2) {
+        if (w == null || y2 < y1) return;
+        final int r = floorRadius;
+        final int layers = y2 - y1 + 1;
+        final int cols = Math.max(1, LAVA_BLOCKS_PER_TICK / (layers * (2 * r + 1)));
+        final int[] nextX = {-r};
+        BukkitTask[] self = new BukkitTask[1];
+        self[0] = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (w != world || state == State.ENDED) {
+                self[0].cancel();
+                return;
             }
-        }
+            int end = Math.min(r, nextX[0] + cols - 1);
+            for (int x = nextX[0]; x <= end; x++) {
+                for (int z = -r; z <= r; z++) {
+                    if (x * x + z * z > r * r) continue;
+                    for (int y = y1; y <= y2; y++) {
+                        Block b = w.getBlockAt(x, y, z);
+                        if (b.getType().isAir()) b.setType(Material.LAVA, false);
+                    }
+                }
+            }
+            nextX[0] = end + 1;
+            if (nextX[0] > r) self[0].cancel();
+        }, 0L, 1L);
+        lavaTasks.add(self[0]);
     }
 
     private void giveItems() {
@@ -386,21 +487,39 @@ public class PofGame implements Match {
         }
     }
 
-    /** Actionbar: border info (pemain dengan pack) atau HUD teks lengkap (tanpa pack). */
+    /** Teks info lava buat actionbar (kosong kalau bukan map Lava Rising). */
+    private Component lavaText() {
+        if (map != PofMap.LAVA) return Component.empty();
+        int in = lavaNextIn();
+        Component c = Component.text("LAVA ", NamedTextColor.GOLD);
+        if (in < 0) return c.append(Component.text("MAKS", NamedTextColor.RED));
+        return c.append(Component.text("+" + lavaStep(elapsed)[1] + " ", NamedTextColor.RED))
+                .append(Component.text(Hud.clock(in), NamedTextColor.WHITE));
+    }
+
+    /**
+     * Actionbar. Pemain tanpa pack: HUD teks lengkap. Pemain dengan pack: HUD ada di bossbar custom
+     * (timer + border sudah di sana), actionbar cuma dipakai buat hitung mundur lava (map Lava Rising).
+     */
     private void sendHud() {
+        Component sep = Component.text("  |  ", NamedTextColor.DARK_GRAY);
         Component border = shrinking
                 ? Component.text("BORDER MENGECIL", NamedTextColor.RED)
                 : Component.text("BORDER ", NamedTextColor.RED)
                         .append(Component.text((settings.shrinkStartSec - elapsed) + "s", NamedTextColor.WHITE));
         Component full = Component.text("NEXT ITEM ", NamedTextColor.YELLOW)
                 .append(Component.text(nextItem + "s", NamedTextColor.WHITE))
-                .append(Component.text("  |  ", NamedTextColor.DARK_GRAY))
-                .append(border)
-                .append(Component.text("  |  ", NamedTextColor.DARK_GRAY))
+                .append(sep)
+                .append(border);
+        if (map == PofMap.LAVA) full = full.append(sep).append(lavaText());
+        full = full.append(sep)
+                .append(Component.text(Hud.clock(elapsed), NamedTextColor.AQUA))
+                .append(sep)
                 .append(Component.text(alive.size() + "/" + roundOrder.size(), NamedTextColor.GREEN));
-        // pemain dengan pack: border sudah ada di HUD custom, actionbar gak dipakai
+        Component lavaOnly = lavaText();
         for (Player p : participants()) {
             if (!plugin.packReady(p)) p.sendActionBar(full);
+            else if (map == PofMap.LAVA) p.sendActionBar(lavaOnly);
         }
     }
 
@@ -417,12 +536,16 @@ public class PofGame implements Match {
             al[i] = alive.contains(id);
         }
         double frac = 0.0;
-        if (state == State.RUNNING) {
+        if (readyLeft > 0) {
+            frac = readyLeft / (double) (READY_SEC + COUNTDOWN_SEC);
+        } else if (state == State.RUNNING) {
             frac = (System.currentTimeMillis() - periodStart) / (settings.itemIntervalSec * 1000.0);
         }
         bossBar.name(Hud.build(hs, al, alive.size(), n, Math.max(0, nextItem), frac,
                 plugin.headAdvance(), plugin.slotWidth(),
-                Math.max(0, settings.shrinkStartSec - elapsed), shrinking, roundLabel()));
+                Math.max(0, settings.shrinkStartSec - elapsed), shrinking, roundLabel(),
+                state == State.RUNNING ? elapsed : 0,
+                readyLeft > 0 ? "MULAI " + readyLeft + "s" : null));
     }
 
     private void hideHud() {
@@ -715,6 +838,8 @@ public class PofGame implements Match {
         if (countdownTask != null) countdownTask.cancel();
         if (tickTask != null) tickTask.cancel();
         if (hudTask != null) hudTask.cancel();
+        for (BukkitTask t : lavaTasks) t.cancel();
+        lavaTasks.clear();
     }
 
     private void deleteWorld() {

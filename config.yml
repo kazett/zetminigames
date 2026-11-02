@@ -15,9 +15,11 @@ hud:
   slot-width: 11
 
 battleroyale:
-  # Versi pengaturan. Kalau lebih kecil dari 2, plugin otomatis nimpa nilai lama di bawah ini.
-  rev: 2
+  # Versi pengaturan. Kalau lebih kecil dari 3, plugin otomatis nimpa nilai lama di bawah ini.
+  rev: 3
   center:
+    # true = tiap game dicari titik tengah yang kebanyakan daratan (bukan laut). false = pakai x/z di bawah.
+    auto: true
     x: 0
     z: 0
   sky:
@@ -26,9 +28,11 @@ battleroyale:
   # Waktu di platform tertutup sebelum countdown 5 detik (detik)
   ready-seconds: 30
   zone:
-    start-size: 800
+    start-size: 1000
     final-size: 20
-    stages: 6
+    # Jumlah tahap zona diacak tiap game antara min-max (gak ditampilin di HUD)
+    min-stages: 8
+    max-stages: 12
     # Zona 20x20 tercapai di detik ini (dihitung dari awal countdown 5 detik). 1200 = menit 20
     total-seconds: 1200
     min-wait-seconds: 45

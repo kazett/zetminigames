@@ -187,6 +187,15 @@
     },
     {
       "type": "bitmap",
+      "file": "zetminigames:font/hud_banner_ready.png",
+      "ascent": 12,
+      "height": 28,
+      "chars": [
+        "\ue03d"
+      ]
+    },
+    {
+      "type": "bitmap",
       "file": "zetminigames:font/hud_bar.png",
       "ascent": -16,
       "height": 5,
@@ -209,7 +218,7 @@
       "ascent": -4,
       "height": 8,
       "chars": [
-        "\ue040\ue041\ue042\ue043"
+        "\ue040\ue041\ue042\ue043\ue044"
       ]
     }
   ]

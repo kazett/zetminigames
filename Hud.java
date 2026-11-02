@@ -29,6 +29,7 @@ public final class Hud {
     public static final String ICON_PVP = "\uE041";
     public static final String ICON_KILLS = "\uE042";
     public static final String ICON_WARN = "\uE043";
+    public static final String ICON_CLOCK = "\uE044";
     /** Panah arah ke zona: 8 arah, urutan searah jarum jam mulai dari atas (depan). */
     public static final int ARROW_BASE = 0xE050;
     public static final String[] ARROW_TEXT = {"\u2191", "\u2197", "\u2192", "\u2198", "\u2193", "\u2199", "\u2190", "\u2196"};
@@ -84,26 +85,31 @@ public final class Hud {
      */
     public static Component build(List<Component> heads, boolean[] alive, int aliveCount, int total,
                                   int nextItemSec, double frac, int headAdv, int slot,
-                                  int borderSec, boolean shrinking, String roundLabel) {
-        return compose(heads, alive, aliveCount, total, "NEXT ITEM " + nextItemSec + "s", frac, headAdv, slot,
-                borderSec, shrinking, roundLabel, true);
+                                  int borderSec, boolean shrinking, String roundLabel, int clockSec,
+                                  String topOverride) {
+        return compose(heads, alive, aliveCount, total,
+                topOverride != null ? topOverride : "NEXT ITEM " + nextItemSec + "s", frac, headAdv, slot,
+                borderSec, shrinking, roundLabel, true, clockSec);
     }
 
     public static Component buildSwap(List<Component> heads, boolean[] alive, int aliveCount, int total,
-                                      int swapSec, double frac, int headAdv, int slot, String roundLabel) {
-        return compose(heads, alive, aliveCount, total, "SWAP TP " + fmtTime(swapSec), frac, headAdv, slot,
-                0, false, roundLabel, false);
+                                      int swapSec, double frac, int headAdv, int slot, String roundLabel,
+                                      String topOverride) {
+        return compose(heads, alive, aliveCount, total,
+                topOverride != null ? topOverride : "SWAP TP " + fmtTime(swapSec), frac, headAdv, slot,
+                0, false, roundLabel, false, -1);
     }
 
     public static Component buildMace(List<Component> heads, boolean[] alive, int aliveCount, int total,
                                       String topText, double frac, int headAdv, int slot, String roundLabel) {
         return compose(heads, alive, aliveCount, total, topText, frac, headAdv, slot,
-                0, false, roundLabel, false);
+                0, false, roundLabel, false, -1);
     }
 
     private static Component compose(List<Component> heads, boolean[] alive, int aliveCount, int total,
                                      String topText, double frac, int headAdv, int slot,
-                                     int borderSec, boolean shrinking, String roundLabel, boolean borderRow) {
+                                     int borderSec, boolean shrinking, String roundLabel, boolean borderRow,
+                                     int clockSec) {
         Row r = new Row();
         r.glyph(PANEL, PANEL_W + 1);
 
@@ -145,21 +151,32 @@ public final class Hud {
             r.shift(-1);
         }
 
-        // Baris 4: BORDER (font bawah)
+        // Baris 4: BORDER di kiri; label ronde + jam (timer game) di kanan
+        boolean hasLabel = roundLabel != null && !roundLabel.isEmpty();
         if (borderRow) {
             r.shiftTo(6);
             r.glyph(ICON_BORDER, GLYPH8_ADV, FONT_LOW);
             r.shift(2);
             if (shrinking) {
-                r.text("BORDER MENGECIL!", TextColor.color(0xFF5555), FONT_LOW);
+                r.text(hasLabel && clockSec >= 0 ? "KECIL!" : "MENGECIL!", TextColor.color(0xFF5555), FONT_LOW);
             } else {
-                r.text("BORDER ", TextColor.color(0xFF8080), FONT_LOW);
+                if (!hasLabel || clockSec < 0) r.text("BORDER ", TextColor.color(0xFF8080), FONT_LOW);
                 r.text(fmtTime(borderSec), TextColor.color(0xFFFFFF), FONT_LOW);
             }
         }
-
-        // Label ronde (kanan baris 4), kosong kalau cuma 1 ronde
-        if (roundLabel != null && !roundLabel.isEmpty()) {
+        if (clockSec >= 0) {
+            String t = clock(clockSec);
+            int xTime = PANEL_W - 7 - width(t);
+            int xClock = xTime - 2 - GLYPH8_ADV;
+            if (hasLabel) {
+                r.shiftTo(xClock - 4 - width(roundLabel));
+                r.text(roundLabel, TextColor.color(0xFFD23C), FONT_LOW);
+            }
+            r.shiftTo(xClock);
+            r.glyph(ICON_CLOCK, GLYPH8_ADV, FONT_LOW);
+            r.shift(2);
+            r.text(t, TextColor.color(0xFFFFFF), FONT_LOW);
+        } else if (hasLabel) {
             r.shiftTo(PANEL_W - 6 - width(roundLabel));
             r.text(roundLabel, TextColor.color(0xFFD23C), FONT_LOW);
         }
@@ -253,6 +270,12 @@ public final class Hud {
             }
         }
         return w;
+    }
+
+    /** m:ss (selalu pakai menit), buat jam / timer game. */
+    public static String clock(int s) {
+        s = Math.max(0, s);
+        return (s / 60) + ":" + String.format("%02d", s % 60);
     }
 
     public static String fmtTime(int s) {

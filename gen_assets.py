@@ -93,6 +93,8 @@ BR_ICONS = [
     (["X......X", ".X....X.", "..X..X..", "...XX...", "...XX...", "..X..X..", ".XX..XX.", "XX....XX"], (255, 110, 110, 255)),
     (["........", ".XXXXXX.", "XXXXXXXX", "XooXXooX", "XXXooXXX", ".XXXXXX.", "..X..X..", "........"], (255, 214, 60, 255)),
     (["...XX...", "..XXXX..", "..XooX..", ".XXooXX.", ".XXooXX.", "XXXXXXXX", "XXXooXXX", "XXXXXXXX"], (255, 190, 50, 255)),
+    # jam / timer game (POF)
+    (["..XXXX..", ".X.XX.X.", "X..XX..X", "X..XXX.X", "X......X", "X......X", ".X....X.", "..XXXX.."], (200, 230, 255, 255)),
 ]
 brs = Image.new("RGBA", (8 * len(BR_ICONS), 8), (0, 0, 0, 0))
 for i, (rows, col) in enumerate(BR_ICONS):
@@ -212,6 +214,8 @@ warn.save("hud_tpwarn.png")
 
 make_banner("MULAI!", "hud_banner_go.png", (190, 255, 170, 255), (72, 190, 88, 255), (44, 128, 58, 255),
             (14, 52, 22, 255), (230, 255, 220, 255), (10, 44, 16, 255), 15)
+make_banner("BERSIAP", "hud_banner_ready.png", (190, 232, 255, 255), (70, 150, 230, 255), (40, 96, 164, 255),
+            (12, 34, 70, 255), (226, 244, 255, 255), (8, 28, 60, 255), 13)
 make_banner("TUKAR POSISI", "hud_banner_swap.png", (255, 196, 236, 255), (206, 96, 190, 255), (134, 56, 122, 255),
             (60, 18, 56, 255), (255, 226, 248, 255), (50, 10, 46, 255), 10)
 make_banner("TERELIMINASI", "hud_banner_elim.png", (255, 176, 176, 255), (214, 70, 70, 255), (140, 40, 40, 255),
@@ -249,7 +253,7 @@ prov = [space, {"type": "bitmap", "file": "minecraft:font/ascii.png", "ascent": 
         bm("hud_banner", 12, 28, ["\ue008"]), bm("hud_banner_round", 12, 28, ["\ue00b"]), bm("hud_banner_draw", 12, 28, ["\ue00c"]), bm("hud_winframe", 10, 12, ["\ue009"]),
         bm("hud_count", 12, 28, ["".join(chr(0xE030 + i) for i in range(5))]),
         bm("hud_tpwarn", 12, 28, ["".join(chr(0xE035 + i) for i in range(5))]),
-        bm("hud_banner_go", 12, 28, ["\ue03a"]), bm("hud_banner_swap", 12, 28, ["\ue03b"]), bm("hud_banner_elim", 12, 28, ["\ue03c"]),
+        bm("hud_banner_go", 12, 28, ["\ue03a"]), bm("hud_banner_swap", 12, 28, ["\ue03b"]), bm("hud_banner_elim", 12, 28, ["\ue03c"]), bm("hud_banner_ready", 12, 28, ["\ue03d"]),
         bm("hud_bar", -16, 5, ["".join(chr(0xE010 + i) for i in range(11))]),
         bm("hud_icons", 7, 8, ["".join(chr(0xE020 + i) for i in range(len(ICONS)))]),
         bm("hud_br", -4, 8, ["".join(chr(0xE040 + i) for i in range(len(BR_ICONS)))])]

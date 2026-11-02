@@ -13,6 +13,7 @@ public final class CustomTitle {
     public static final String BANNER_GO = "\uE03A";
     public static final String BANNER_SWAP = "\uE03B";
     public static final String BANNER_ELIM = "\uE03C";
+    public static final String BANNER_READY = "\uE03D";
 
     private static Component glyph(String s) {
         return Component.text(s).font(Hud.FONT).shadowColor(ShadowColor.none());

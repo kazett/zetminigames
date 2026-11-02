@@ -53,6 +53,8 @@ public class DeathSwapGame implements Match {
     private enum State { LOADING, COUNTDOWN, RUNNING, ENDED }
 
     private static final int COUNTDOWN_SEC = 5;
+    /** Waktu siap-siap (detik) sebelum countdown 5..1: pemain udah di spawn tapi belum bisa gerak (world sempat ke-render). */
+    private static final int READY_SEC = 10;
     private static final int WARN_SEC = 5;
     private static final double SPREAD_BASE = 120.0;
     private static final double SPREAD_PER_PLAYER = 30.0;
@@ -82,6 +84,8 @@ public class DeathSwapGame implements Match {
     private State state = State.LOADING;
     private BukkitTask countdownTask, tickTask, endTask, hudTask;
     private int nextSwap;
+    /** Detik sampai game mulai (siap-siap + countdown), 0 kalau udah jalan. Buat HUD. */
+    private int readyLeft;
     private long periodStart;
     private BossBar bossBar;
 
@@ -228,13 +232,32 @@ public class DeathSwapGame implements Match {
         updateHud();
 
         state = State.COUNTDOWN;
+        readyLeft = READY_SEC + COUNTDOWN_SEC;
+        updateHud();
         countdownTask = new org.bukkit.scheduler.BukkitRunnable() {
             int c = COUNTDOWN_SEC;
+            int wait = READY_SEC;
 
             @Override
             public void run() {
                 if (state == State.ENDED) { cancel(); return; }
+                if (wait > 0) {
+                    readyLeft = wait + c;
+                    if (wait == READY_SEC) {   // banner BERSIAP custom, tampil selama masa siap-siap
+                        for (Player p : participants()) {
+                            CustomTitle.show(plugin, p, CustomTitle.banner(CustomTitle.BANNER_READY),
+                                    Component.text("BERSIAP", NamedTextColor.AQUA, TextDecoration.BOLD),
+                                    Component.text("Tunggu semua siap", NamedTextColor.GRAY),
+                                    Title.Times.times(Duration.ZERO, Duration.ofSeconds(READY_SEC), Duration.ZERO));
+                        }
+                    }
+                    updateHud();
+                    wait--;
+                    return;
+                }
                 if (c > 0) {
+                    readyLeft = c;
+                    updateHud();
                     for (Player p : participants()) {
                         CustomTitle.show(plugin, p, CustomTitle.count(c),
                                 Component.text(String.valueOf(c), NamedTextColor.YELLOW, TextDecoration.BOLD),
@@ -282,6 +305,7 @@ public class DeathSwapGame implements Match {
 
     private void startRunning() {
         state = State.RUNNING;
+        readyLeft = 0;
         nextSwap = settings.swapIntervalSec;
         periodStart = System.currentTimeMillis();
         for (Player p : participants()) {
@@ -384,11 +408,14 @@ public class DeathSwapGame implements Match {
             al[i] = alive.contains(id);
         }
         double frac = 0.0;
-        if (state == State.RUNNING) {
+        if (readyLeft > 0) {
+            frac = readyLeft / (double) (READY_SEC + COUNTDOWN_SEC);
+        } else if (state == State.RUNNING) {
             frac = (System.currentTimeMillis() - periodStart) / (settings.swapIntervalSec * 1000.0);
         }
         bossBar.name(Hud.buildSwap(hs, al, alive.size(), n, Math.max(0, nextSwap), frac,
-                plugin.headAdvance(), plugin.slotWidth(), roundLabel()));
+                plugin.headAdvance(), plugin.slotWidth(), roundLabel(),
+                readyLeft > 0 ? "MULAI " + readyLeft + "s" : null));
     }
 
     private void hideHud() {

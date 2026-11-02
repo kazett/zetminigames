@@ -23,9 +23,8 @@ Satu-satunya command yang perlu diketik: `/panel`. Ready/Tolak/Batalin = klik to
 `/pof ready|leave|cancel` masih ada cuma sebagai cadangan.
 
 ## Layout pilar
-- Pilar disusun melingkar, jarak antar pilar sebelahan >= 10 block (`PofGame.PILLAR_SPACING`).
-- 4 pemain = kotak 10x10. Makin banyak pemain, lingkarannya makin gede.
-- Border awal = pilar terluar + 5 block (`PofGame.BORDER_MARGIN`), 1 border buat semua.
+- Layout pilar: lihat bagian v17 (cincin luar + isi dalam, jarak >= 15).
+- Border awal = pilar terluar + 10 block (`PofGame.BORDER_MARGIN`), 1 border buat semua.
 - Catatan: WorldBorder vanilla selalu KOTAK. Border bulat beneran butuh sistem custom (lihat TODO).
 
 ## Progress
@@ -203,10 +202,10 @@ Game keempat, package `id.zetminigames.battleroyale`. Solo saja (mode tim dibata
 - Aturan world: mob gak bisa spawn sama sekali, siang terus (waktu dikunci 6000), hujan boleh, pesan achievement di chat dimatiin.
   Block bisa dipasang (dari loot) tapi gak bisa dihancurin (semua block).
 - PvP mati `pvp-delay-seconds` (60) detik sejak countdown selesai. Mati / nyerah / keluar = item jatuh, jadi spectator. Terakhir hidup menang.
-- Zona: border vanilla (kotak), titik tengah tetap (`center.x/z`), ukuran awal `zone.start-size` ke `zone.final-size` lewat `zone.stages` tahap.
+- Zona: border vanilla (kotak), titik tengah tetap per game, ukuran awal `zone.start-size` (1000) ke `zone.final-size` (20). Jumlah tahap diacak 8-12 (lihat v17).
   Jadwal diacak tiap game (waktu tunggu + lama mengecil), tapi tahap terakhir selalu selesai di `zone.total-seconds` (1200 = menit 20). Minimal tunggu/mengecil per tahap: `zone.min-wait-seconds` / `zone.min-shrink-seconds`.
 - Config baru (config.yml server lama gak ketimpa, default sama kayak di bawah dan udah ada di kode):
-  `battleroyale.center.x/z`, `sky.y` (tempat berdiri) + `sky.radius`, `zone.start-size/final-size/stages/total-seconds/min-wait-seconds/min-shrink-seconds/damage`, `pvp-delay-seconds`.
+  `battleroyale.center.x/z`, `sky.y` (tempat berdiri) + `sky.radius`, `zone.start-size/final-size/min-stages/max-stages/total-seconds/min-wait-seconds/min-shrink-seconds/damage`, `pvp-delay-seconds`.
 - HUD (v15): bossbar custom per pemain (font `hud_top`/`hud`/`hud_low`): fase zona + timer, PVP, jumlah hidup, bar waktu, panah arah + jarak ke zona, kill. Tanpa pack = actionbar teks (ada panah unicode). Dinding zona = partikel merah di dekat pemain. Peringatan zona 30s/10s + hitung mundur 5..1, title "ZONA MENGECIL".
 - File lama yang diubah (cuma nambah entri BR): `GameType`, `GameManager` (invite, startLobby, lobby host-driven), `Panels` (tombol + panel host/undang), `config.yml`.
 - MODE TES (v15): `/panel` > Battle Royale > tombol **MODE TES: OFF/ON** di panel host. Cuma buat sendiri (1 pemain, undangan diblok). Game jalan normal, bedanya sisa 1 pemain TIDAK menang. `/panel` pas main muncul **Selesai (tes)** (cuma di mode tes) = game kelar, lu jadi pemenang. Game kelar sendiri kalau semua mati/nyerah. Tombol Seri (tes) gak dipakai di BR. Opsi percepat tes: `battleroyale.test.total-seconds` & `test.pvp-delay-seconds` di config.yml.
@@ -214,3 +213,28 @@ Game keempat, package `id.zetminigames.battleroyale`. Solo saja (mode tim dibata
 - v14: tambah Battle Royale.
 
 - v15: Battle Royale mode tes + HUD zona custom (aset baru: `hud_br.png`, `hud_arrows.png`, `hud_top.json`; `hud.json` & `hud_low.json` diperbarui). SHA1 pack berubah -> update `resource-pack.sha1` di config.yml. BELUM DICOMPILE / DITES.
+
+
+## v17 (revisi POF + Battle Royale) - BELUM DICOMPILE / DITES
+Perlu build ulang pack (ada ikon jam baru di `hud_br.png`): update `resource-pack.sha1` di config.yml lagi.
+
+### Pillar of Fortune
+- **Layout pilar** (`PillarLayout.java`, tanpa Bukkit, sudah dites terpisah): sampai 6 pemain = 1 cincin. 7+ pemain = cincin luar (maks 10 pilar) + sisanya di dalam (cincin kecil selang-seling, kadang 1 pilar di tengah),
+  semua jarak >= 15 block, cincin dibikin sekecil mungkin. 20 pemain = 10 luar + 10 dalam, radius terluar sekitar 36 block (dulu 1 cincin penuh = 48). 8-11 pemain tetap 1 cincin (itu yang paling kecil).
+  Posisi tiap pemain diacak tiap ronde (jadi gak selalu di luar / di dalam). Border = pilar terluar + 10, lantai bulat ikut.
+- **Lava Rising**: lantai = danau lava dari awal (bedrock di bawahnya). Lava langsung naik begitu countdown kelar (naik pertama di detik ke-25), makin lama makin cepat & makin tinggi sekali naik:
+  0-2 menit tiap 25s +1 block | 2-3 menit tiap 20s +2 | 3-5 menit tiap 15s +3 | 5 menit dst tiap 10s +5. Naik terus sampai batas atas world (`world.getMaxHeight()-1`, build up gak nyelametin). Tabel di `PofGame.lavaStep()`.
+  Lapisan diisi dicicil beberapa tick (`LAVA_BLOCKS_PER_TICK`). Hitung mundur + jumlah block naik tampil di actionbar.
+- **Siap-siap 15 detik**: pemain di-TP ke pilar, ditahan `READY_SEC` (10 detik, actionbar "BERSIAP") lalu countdown 5..1. Item dan lava baru jalan setelah countdown kelar.
+- **Timer di HUD**: baris ke-4 kanan ada ikon jam + lama game berjalan (`m:ss`, mulai dari "MULAI!"). Label ronde (`R2/3`, tanpa spasi) geser ke kiri jam. Jarak kosong minimal antar elemen baris 4 = 19 px (dihitung buat kasus terburuk: R10/10, border 10:00, jam 99:59).
+  Teks border pas mengecil jadi `MENGECIL!` (`KECIL!` kalau ada label ronde). Kalau ada label ronde, tulisan "BORDER" di kiri dihilangkan (ikon aja). Ikon jam = glyph `\uE044` (`hud_br.png`).
+
+### Battle Royale
+- **Titik tengah otomatis di daratan**: tiap game, plugin ngecek peta biome (tanpa generate chunk) buat sampai 40 titik acak dan pilih yang paling sedikit lautnya (berhenti kalau >= 92% darat).
+  Hasilnya ditulis di log server. Mau pakai titik tetap: `battleroyale.center.auto: false` + `center.x/z`.
+- **Zona awal 1000x1000** (`zone.start-size`). Config lama otomatis di-upgrade (`rev: 3`).
+- **Jumlah tahap zona diacak 8-12** tiap game (`zone.min-stages` / `zone.max-stages`), ukuran tiap tahap juga acak (tetap mengecil), tahap terakhir PASTI 20x20 dan selesai tepat di menit 20 (`zone.total-seconds` 1200).
+  Logika di `ZonePlan.java` (tanpa Bukkit, dites 20.000 jadwal acak). Jumlah tahap cuma muncul di log server.
+- HUD zona sekarang cuma `ZONA m:ss` (menunggu) / `MENGECIL m:ss`, tanpa "ZONA 2/6".
+- **Deathswap**: sama kayak POF, pemain ditahan `READY_SEC` (10 detik, actionbar "BERSIAP") di spawn sebelum countdown 5..1, total 15 detik. Timer swap baru jalan setelah "MULAI!".
+- Siap-siap (POF + Deathswap) sekarang full custom: banner BERSIAP (`hud_banner_ready.png`, glyph \uE03D, tampil 10 detik) + HUD bossbar baris atas "MULAI 15s" dengan bar kuning menyusut. Bukan actionbar lagi. Pack berubah -> update sha1.

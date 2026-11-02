@@ -42,12 +42,20 @@ public class ZetMinigames extends JavaPlugin {
     }
 
     private void migrateConfig() {
-        if (getConfig().getInt("battleroyale.rev", 0) >= 2) return;
-        getConfig().set("battleroyale.rev", 2);
-        getConfig().set("battleroyale.sky.y", 300);
-        getConfig().set("battleroyale.sky.radius", 24);
-        getConfig().set("battleroyale.zone.start-size", 800);
-        getConfig().set("battleroyale.pvp-delay-seconds", 30);
+        int rev = getConfig().getInt("battleroyale.rev", 0);
+        if (rev >= 3) return;
+        if (rev < 2) {
+            getConfig().set("battleroyale.sky.y", 300);
+            getConfig().set("battleroyale.sky.radius", 24);
+            getConfig().set("battleroyale.pvp-delay-seconds", 30);
+        }
+        // rev 3: zona 1000x1000, jumlah tahap acak 8-12, titik tengah otomatis di daratan
+        getConfig().set("battleroyale.rev", 3);
+        getConfig().set("battleroyale.zone.start-size", 1000);
+        getConfig().set("battleroyale.zone.stages", null);
+        getConfig().set("battleroyale.zone.min-stages", 8);
+        getConfig().set("battleroyale.zone.max-stages", 12);
+        getConfig().set("battleroyale.center.auto", true);
         saveConfig();
     }
 

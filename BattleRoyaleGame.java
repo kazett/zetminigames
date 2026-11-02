@@ -30,6 +30,7 @@ import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
 import org.bukkit.WorldCreator;
+import org.bukkit.block.Biome;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.entity.Entity;
@@ -80,6 +81,16 @@ public class BattleRoyaleGame implements Match, Listener {
     private static final int CHEST_CELL = 14;
     private static final int CHEST_JITTER = 2;
     private static final long NOON = 6000L;
+    /** Ukuran zona awal (1000 = 1000x1000). */
+    private static final double DEFAULT_START_SIZE = 1000.0;
+    /** Cari titik tengah daratan: maks sekian kandidat, berhenti kalau udah >= LAND_OK. */
+    private static final int CENTER_TRIES = 40;
+    private static final double LAND_OK = 0.92;
+    private static final int CENTER_SCAN_STEP = 50;
+    private static final Set<Biome> OCEAN_BIOMES = Set.of(
+            Biome.OCEAN, Biome.DEEP_OCEAN, Biome.COLD_OCEAN, Biome.DEEP_COLD_OCEAN,
+            Biome.FROZEN_OCEAN, Biome.DEEP_FROZEN_OCEAN, Biome.LUKEWARM_OCEAN,
+            Biome.DEEP_LUKEWARM_OCEAN, Biome.WARM_OCEAN);
 
     private final ZetMinigames plugin;
     private final GameManager manager;
@@ -106,7 +117,8 @@ public class BattleRoyaleGame implements Match, Listener {
     private BukkitTask endTask;
     private long matchStart;
     private long releaseAt;
-    private int baseStages;
+    private int centerX;
+    private int centerZ;
     private int pvpDelay;
     private boolean pvpOn;
     private int nextShrink;
@@ -182,13 +194,14 @@ public class BattleRoyaleGame implements Match, Listener {
             return false;
         }
         world = created;
-        int cx = cfgInt("center.x", 0);
-        int cz = cfgInt("center.z", 0);
+        pickCenter();
+        int cx = centerX;
+        int cz = centerZ;
         world.setDifficulty(Difficulty.NORMAL);
         world.setSpawnLocation(cx, skyY(), cz);
         WorldBorder wb = world.getWorldBorder();
         wb.setCenter(cx + 0.5, cz + 0.5);
-        wb.setSize(cfgDouble("zone.start-size", 800.0));
+        wb.setSize(cfgDouble("zone.start-size", DEFAULT_START_SIZE));
         wb.setDamageBuffer(0.0);
         wb.setDamageAmount(cfgDouble("zone.damage", 1.0));
         wb.setWarningDistance(12);
@@ -200,6 +213,53 @@ public class BattleRoyaleGame implements Match, Listener {
         msg(Component.text("Menyiapkan arena...", NamedTextColor.YELLOW));
         loadCenter(cx, cz);
         return true;
+    }
+
+    /**
+     * Cari titik tengah arena yang sebagian besar daratan (bukan laut), jadi chest gak hilang di atas air.
+     * Cuma baca peta biome (gak generate chunk), jadi cepat. Matiin lewat `battleroyale.center.auto: false`
+     * kalau mau pakai `center.x/z` dari config.
+     */
+    private void pickCenter() {
+        if (!plugin.getConfig().getBoolean("battleroyale.center.auto", true)) {
+            centerX = cfgInt("center.x", 0);
+            centerZ = cfgInt("center.z", 0);
+            return;
+        }
+        double size = cfgDouble("zone.start-size", DEFAULT_START_SIZE);
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        int bestX = 0;
+        int bestZ = 0;
+        double best = -1.0;
+        for (int i = 0; i < CENTER_TRIES; i++) {
+            int x = i == 0 ? 0 : random.nextInt(-8000, 8001);
+            int z = i == 0 ? 0 : random.nextInt(-8000, 8001);
+            double land = landFraction(x, z, size);
+            if (land > best) {
+                best = land;
+                bestX = x;
+                bestZ = z;
+            }
+            if (land >= LAND_OK) break;
+        }
+        centerX = bestX;
+        centerZ = bestZ;
+        plugin.getLogger().info("Battle Royale: titik tengah " + centerX + ", " + centerZ
+                + " (daratan " + Math.round(best * 100) + "%)");
+    }
+
+    /** Persentase titik (grid kasar) di area zona awal yang BUKAN laut. */
+    private double landFraction(int cx, int cz, double size) {
+        int half = (int) (size / 2.0);
+        int land = 0;
+        int total = 0;
+        for (int x = cx - half; x <= cx + half; x += CENTER_SCAN_STEP) {
+            for (int z = cz - half; z <= cz + half; z += CENTER_SCAN_STEP) {
+                total++;
+                if (!OCEAN_BIOMES.contains(world.getBiome(x, 64, z))) land++;
+            }
+        }
+        return total == 0 ? 0.0 : land / (double) total;
     }
 
     private void loadCenter(int cx, int cz) {
@@ -226,8 +286,8 @@ public class BattleRoyaleGame implements Match, Listener {
     private void sky(boolean build) {
         int r = skyRadius();
         int y = skyY() - 1;
-        int cx = cfgInt("center.x", 0);
-        int cz = cfgInt("center.z", 0);
+        int cx = centerX;
+        int cz = centerZ;
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
                 double d = Math.sqrt(dx * dx + dz * dz);
@@ -286,9 +346,7 @@ public class BattleRoyaleGame implements Match, Listener {
         if (!processedChunks.add(chunk.getChunkKey())) return;
         int minX = chunk.getX() << 4;
         int minZ = chunk.getZ() << 4;
-        int centerX = cfgInt("center.x", 0);
-        int centerZ = cfgInt("center.z", 0);
-        double half = cfgDouble("zone.start-size", 800.0) / 2.0;
+        double half = cfgDouble("zone.start-size", DEFAULT_START_SIZE) / 2.0;
         int skyR = skyRadius() + 1;
         for (int i = Math.floorDiv(minX - 10, CHEST_CELL); i <= Math.floorDiv(minX + 20, CHEST_CELL); i++) {
             for (int j = Math.floorDiv(minZ - 10, CHEST_CELL); j <= Math.floorDiv(minZ + 20, CHEST_CELL); j++) {
@@ -312,9 +370,9 @@ public class BattleRoyaleGame implements Match, Listener {
 
     private void enterArena() {
         if (state == State.ENDED) return;
-        double sx = cfgInt("center.x", 0) + 0.5;
+        double sx = centerX + 0.5;
         double sy = skyY();
-        double sz = cfgInt("center.z", 0) + 0.5;
+        double sz = centerZ + 0.5;
         skyCenter = new Location(world, sx, sy, sz);
         List<Location> spots = skySpots(sx, sy, sz);
         state = State.READY;
@@ -472,57 +530,19 @@ public class BattleRoyaleGame implements Match, Listener {
     }
 
     private void buildSchedule() {
-        int n = Math.max(1, cfgInt("zone.stages", 6));
-        double startSize = cfgDouble("zone.start-size", 800.0);
-        double finalSize = cfgDouble("zone.final-size", 20.0);
-        int total = cfgInt("zone.total-seconds", 1200);
-        total = Math.max(n * 2, total);
-        totalSec = total;
-        double minWait = cfgInt("zone.min-wait-seconds", 45);
-        double minShrink = cfgInt("zone.min-shrink-seconds", 30);
-
-        double scale = Math.min(1.0, total / (n * (minWait + minShrink)));
-        minWait *= scale;
-        minShrink *= scale;
-        double spare = total - n * (minWait + minShrink);
-
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        double[] weights = new double[n * 2];
-        double sum = 0.0;
-        for (int k = 0; k < weights.length; k++) {
-            weights[k] = 0.15 - Math.log(1.0 - random.nextDouble());
-            sum += weights[k];
-        }
-
-        baseStages = n;
-        shrinkAt = new int[n + FORCED_STAGES];
-        shrinkLen = new int[n + FORCED_STAGES];
-        sizes = new int[n + FORCED_STAGES];
-        double t = 0.0;
-        for (int i = 0; i < n; i++) {
-            double wait = minWait + spare * weights[i * 2] / sum;
-            double shrink = minShrink + spare * weights[i * 2 + 1] / sum;
-            t += wait;
-            shrinkAt[i] = (int) Math.round(t);
-            shrinkLen[i] = Math.max(1, (int) Math.round(shrink));
-            t += shrink;
-            double size = startSize * Math.pow(finalSize / startSize, (i + 1) / (double) n);
-            sizes[i] = (int) Math.max(finalSize, Math.round(size));
-        }
-        sizes[n - 1] = (int) finalSize;
-        shrinkLen[n - 1] = Math.max(1, total - shrinkAt[n - 1]);
-
-        int gap = cfgInt("zone.force-gap-seconds", 300);
-        gap = Math.max(2, gap);
-        int forceLen = Math.max(1, Math.min(cfgInt("zone.force-shrink-seconds", 60), gap - 1));
-        int[] forceSizes = {cfgInt("zone.force-size-1", 10), cfgInt("zone.force-size-2", 1)};
-        for (int k = 0; k < FORCED_STAGES; k++) {
-            int end = total + gap * (k + 1);
-            shrinkAt[n + k] = end - forceLen;
-            shrinkLen[n + k] = forceLen;
-            sizes[n + k] = Math.max(1, forceSizes[k]);
-        }
+        ZonePlan plan = ZonePlan.generate(ThreadLocalRandom.current(),
+                cfgInt("zone.min-stages", 8), cfgInt("zone.max-stages", 12),
+                cfgDouble("zone.start-size", DEFAULT_START_SIZE), cfgDouble("zone.final-size", 20.0),
+                cfgInt("zone.total-seconds", 1200),
+                cfgInt("zone.min-wait-seconds", 45), cfgInt("zone.min-shrink-seconds", 30),
+                cfgInt("zone.force-gap-seconds", 300), cfgInt("zone.force-shrink-seconds", 60),
+                new int[]{cfgInt("zone.force-size-1", 10), cfgInt("zone.force-size-2", 1)});
+        shrinkAt = plan.shrinkAt;
+        shrinkLen = plan.shrinkLen;
+        sizes = plan.sizes;
+        totalSec = plan.totalSeconds();
         nextShrink = 0;
+        plugin.getLogger().info("Battle Royale: " + plan.baseStages + " tahap zona, sizes=" + java.util.Arrays.toString(sizes));
     }
 
     // ===================== HUD / ZONA =====================
@@ -539,9 +559,7 @@ public class BattleRoyaleGame implements Match, Listener {
             if (sec < shrinkAt[i]) {
                 int span = Math.max(1, shrinkAt[i] - prevEnd);
                 int left = shrinkAt[i] - sec;
-                String label = i < baseStages ? "ZONA " + (i + 1) + "/" + baseStages
-                        : "ZONA " + sizes[i - 1] + "x" + sizes[i - 1];
-                return new Phase(label, 0xFFD23C, left, left / (double) span, false, false);
+                return new Phase("ZONA", 0xFFD23C, left, left / (double) span, false, false);
             }
             int endAt = shrinkAt[i] + shrinkLen[i];
             if (sec < endAt) {
