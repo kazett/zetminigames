@@ -189,10 +189,6 @@ public final class Hud {
         r.glyph(ICON_ZONE, GLYPH8_ADV, FONT_TOP);
         r.shift(2);
         r.text(d.phase(), TextColor.color(d.phaseColor()), FONT_TOP);
-        if (d.test()) {
-            r.shiftTo(PANEL_W / 2 + 6);
-            r.text("[TES]", TextColor.color(0xFFAA00), FONT_TOP);
-        }
         r.shiftTo(PANEL_W - 6 - width(d.timer()));
         r.text(d.timer(), TextColor.color(0xFFFFFF), FONT_TOP);
 
@@ -201,6 +197,10 @@ public final class Hud {
         r.glyph(ICON_PVP, GLYPH8_ADV);
         r.shift(2);
         r.text(d.pvp(), TextColor.color(d.pvpColor()));
+        if (d.test()) {
+            r.shiftTo(72);
+            r.text("[TES]", TextColor.color(0xFFAA00));
+        }
         String cnt = d.alive() + "/" + d.total();
         int xText = PANEL_W - 7 - width(cnt);
         r.shiftTo(xText - 2 - GLYPH8_ADV);

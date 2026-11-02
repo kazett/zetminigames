@@ -4,7 +4,7 @@ public enum GameType {
     POF("Pillar of Fortune", 2, 20, 1),
     DEATHSWAP("Deathswap", 2, 10, 1),
     MACE("Mace Roulette", 2, 10, 1),
-    BATTLEROYALE("Battle Royale", 8, 48, 1);
+    BATTLEROYALE("Battle Royale", 2, 48, 1);
 
     public final String label;
     public final int min;

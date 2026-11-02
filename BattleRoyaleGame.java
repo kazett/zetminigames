@@ -18,6 +18,7 @@ import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Color;
+import org.bukkit.Difficulty;
 import org.bukkit.FireworkEffect;
 import org.bukkit.GameMode;
 import org.bukkit.HeightMap;
@@ -70,10 +71,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class BattleRoyaleGame implements Match, Listener {
-    private enum State { LOADING, COUNTDOWN, RUNNING, ENDED }
+    private enum State { LOADING, READY, COUNTDOWN, RUNNING, ENDED }
 
     private static final int COUNTDOWN_SEC = 5;
     private static final int SLOW_FALL_TICKS = 20 * 600;
+    private static final int CAGE_HEIGHT = 5;
+    private static final int FORCED_STAGES = 2;
     private static final int CHEST_CELL = 14;
     private static final int CHEST_JITTER = 2;
     private static final long NOON = 6000L;
@@ -94,13 +97,16 @@ public class BattleRoyaleGame implements Match, Listener {
     private final Map<UUID, Integer> kills = new HashMap<>();
     private final Map<UUID, BossBar> bars = new HashMap<>();
     private final Set<String> warned = new HashSet<>();
+    private final Set<Long> placed = new HashSet<>();
 
     private World world;
     private Location skyCenter;
     private State state = State.LOADING;
     private BukkitTask tickTask;
     private BukkitTask endTask;
-    private long dropAt;
+    private long matchStart;
+    private long releaseAt;
+    private int baseStages;
     private int pvpDelay;
     private boolean pvpOn;
     private int nextShrink;
@@ -149,6 +155,14 @@ public class BattleRoyaleGame implements Match, Listener {
     @Override
     public boolean hasTestDraw() { return false; }
 
+    private int skyY() {
+        return cfgInt("sky.y", 300);
+    }
+
+    private int skyRadius() {
+        return Math.max(4, cfgInt("sky.radius", 24));
+    }
+
     private int cfgInt(String key, int def) {
         return plugin.getConfig().getInt("battleroyale." + key, def);
     }
@@ -170,10 +184,11 @@ public class BattleRoyaleGame implements Match, Listener {
         world = created;
         int cx = cfgInt("center.x", 0);
         int cz = cfgInt("center.z", 0);
-        world.setSpawnLocation(cx, cfgInt("sky.y", 200), cz);
+        world.setDifficulty(Difficulty.NORMAL);
+        world.setSpawnLocation(cx, skyY(), cz);
         WorldBorder wb = world.getWorldBorder();
         wb.setCenter(cx + 0.5, cz + 0.5);
-        wb.setSize(cfgDouble("zone.start-size", 500.0));
+        wb.setSize(cfgDouble("zone.start-size", 800.0));
         wb.setDamageBuffer(0.0);
         wb.setDamageAmount(cfgDouble("zone.damage", 1.0));
         wb.setWarningDistance(12);
@@ -188,7 +203,7 @@ public class BattleRoyaleGame implements Match, Listener {
     }
 
     private void loadCenter(int cx, int cz) {
-        int r = Math.max(4, cfgInt("sky.radius", 16));
+        int r = skyRadius();
         List<CompletableFuture<Chunk>> loads = new ArrayList<>();
         for (int x = (cx - r) >> 4; x <= (cx + r) >> 4; x++) {
             for (int z = (cz - r) >> 4; z <= (cz + r) >> 4; z++) {
@@ -203,24 +218,33 @@ public class BattleRoyaleGame implements Match, Listener {
                         return;
                     }
                     for (Chunk loaded : world.getLoadedChunks()) placeChests(loaded);
-                    buildSky();
+                    sky(true);
                     enterArena();
                 }));
     }
 
-    private void buildSky() {
-        int r = Math.max(4, cfgInt("sky.radius", 16));
-        int y = cfgInt("sky.y", 200) - 1;
+    private void sky(boolean build) {
+        int r = skyRadius();
+        int y = skyY() - 1;
         int cx = cfgInt("center.x", 0);
         int cz = cfgInt("center.z", 0);
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
                 double d = Math.sqrt(dx * dx + dz * dz);
                 if (d > r + 0.5) continue;
-                Material m = d > r - 1.5 ? Material.POLISHED_BLACKSTONE
+                boolean rim = d > r - 1.5;
+                Material floor = !build ? Material.AIR
+                        : rim ? Material.POLISHED_BLACKSTONE
                         : Math.abs(d - r / 2.0) < 0.6 ? Material.GOLD_BLOCK
                         : Material.SMOOTH_QUARTZ;
-                world.getBlockAt(cx + dx, y, cz + dz).setType(m, false);
+                world.getBlockAt(cx + dx, y, cz + dz).setType(floor, false);
+                Material cage = build ? Material.GLASS : Material.AIR;
+                if (rim) {
+                    for (int h = 1; h <= CAGE_HEIGHT; h++) {
+                        world.getBlockAt(cx + dx, y + h, cz + dz).setType(cage, false);
+                    }
+                }
+                world.getBlockAt(cx + dx, y + CAGE_HEIGHT + 1, cz + dz).setType(cage, false);
             }
         }
     }
@@ -264,8 +288,8 @@ public class BattleRoyaleGame implements Match, Listener {
         int minZ = chunk.getZ() << 4;
         int centerX = cfgInt("center.x", 0);
         int centerZ = cfgInt("center.z", 0);
-        double half = cfgDouble("zone.start-size", 500.0) / 2.0;
-        int skyR = Math.max(4, cfgInt("sky.radius", 16)) + 1;
+        double half = cfgDouble("zone.start-size", 800.0) / 2.0;
+        int skyR = skyRadius() + 1;
         for (int i = Math.floorDiv(minX - 10, CHEST_CELL); i <= Math.floorDiv(minX + 20, CHEST_CELL); i++) {
             for (int j = Math.floorDiv(minZ - 10, CHEST_CELL); j <= Math.floorDiv(minZ + 20, CHEST_CELL); j++) {
                 Random rng = new Random(world.getSeed() ^ (i * 73856093L) ^ (j * 19349663L));
@@ -289,11 +313,11 @@ public class BattleRoyaleGame implements Match, Listener {
     private void enterArena() {
         if (state == State.ENDED) return;
         double sx = cfgInt("center.x", 0) + 0.5;
-        double sy = cfgInt("sky.y", 200);
+        double sy = skyY();
         double sz = cfgInt("center.z", 0) + 0.5;
         skyCenter = new Location(world, sx, sy, sz);
         List<Location> spots = skySpots(sx, sy, sz);
-        state = State.COUNTDOWN;
+        state = State.READY;
         int i = 0;
         for (Player p : participants()) {
             UUID id = p.getUniqueId();
@@ -308,11 +332,70 @@ public class BattleRoyaleGame implements Match, Listener {
             checkWin();
             return;
         }
-        countdown(COUNTDOWN_SEC, this::startDrop);
+        readyPhase();
+    }
+
+    private void readyPhase() {
+        int sec = cfgInt("ready-seconds", 30);
+        msg(Component.text("Kalian punya " + sec + " detik di platform buat siap-siap.", NamedTextColor.YELLOW));
+        BukkitTask[] self = new BukkitTask[1];
+        int[] left = {sec};
+        final int total = sec;
+        self[0] = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (state != State.READY) {
+                self[0].cancel();
+                return;
+            }
+            if (left[0] <= 0) {
+                self[0].cancel();
+                startCountdown();
+                return;
+            }
+            for (Player p : participants()) readyHud(p, left[0], total);
+            left[0]--;
+        }, 0L, 20L);
+        temp.add(self[0]);
+    }
+
+    private int pvpDelaySec() {
+        return cfgInt("pvp-delay-seconds", 30);
+    }
+
+    private void readyHud(Player p, int left, int total) {
+        String timer = clock(left);
+        if (!plugin.packReady(p)) {
+            p.sendActionBar(Component.text("BERSIAP  ", NamedTextColor.YELLOW, TextDecoration.BOLD)
+                    .append(Component.text("Countdown mulai dalam " + timer, NamedTextColor.WHITE)));
+            return;
+        }
+        UUID id = p.getUniqueId();
+        BossBar bar = bars.get(id);
+        if (bar == null) {
+            bar = BossBar.bossBar(Component.empty(), 1f, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
+            bars.put(id, bar);
+            p.showBossBar(bar);
+        }
+        bar.name(Hud.buildBr(new Hud.BrData("BERSIAP", 0xFFD23C, timer, left / (double) Math.max(1, total),
+                "PVP " + Hud.fmtTime(pvpDelaySec()), 0xFFAA55, alive.size(), Math.max(startCount, alive.size()),
+                0, "DI PLATFORM", 0x55FF55, 0, testMode)));
+    }
+
+    private void startCountdown() {
+        if (state != State.READY) return;
+        state = State.COUNTDOWN;
+        matchStart = System.currentTimeMillis();
+        pvpDelay = pvpDelaySec();
+        buildSchedule();
+        tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 0L, 10L);
+        countdown(COUNTDOWN_SEC, this::release);
+    }
+
+    private static String clock(int sec) {
+        return (sec / 60) + ":" + String.format("%02d", sec % 60);
     }
 
     private List<Location> skySpots(double sx, double sy, double sz) {
-        int r = Math.max(4, cfgInt("sky.radius", 16)) - 2;
+        int r = skyRadius() - 2;
         List<Location> spots = new ArrayList<>();
         ThreadLocalRandom random = ThreadLocalRandom.current();
         for (int dx = -r; dx <= r; dx += 2) {
@@ -367,15 +450,13 @@ public class BattleRoyaleGame implements Match, Listener {
         temp.add(self[0]);
     }
 
-    private void startDrop() {
+    private void release() {
         if (state != State.COUNTDOWN) return;
         state = State.RUNNING;
-        dropAt = System.currentTimeMillis();
-        pvpDelay = cfgInt("pvp-delay-seconds", 60);
-        int testPvp = cfgInt("test.pvp-delay-seconds", -1);
-        if (testMode && testPvp >= 0) pvpDelay = testPvp;
+        releaseAt = System.currentTimeMillis();
+        sky(false);
         pvpOn = pvpDelay <= 0;
-        buildSchedule();
+        if (!pvpOn) msg(Component.text("PVP aktif dalam " + pvpDelay + " detik", NamedTextColor.YELLOW));
         for (Player p : participants()) {
             UUID id = p.getUniqueId();
             if (!alive.contains(id)) continue;
@@ -385,18 +466,16 @@ public class BattleRoyaleGame implements Match, Listener {
                     Component.text("MULAI!", NamedTextColor.GREEN, TextDecoration.BOLD),
                     Component.text("Turun dan cari loot", NamedTextColor.GRAY),
                     Title.Times.times(Duration.ZERO, Duration.ofMillis(1200), Duration.ofMillis(300)));
+            p.playSound(p.getLocation(), Sound.BLOCK_GLASS_BREAK, 1f, 1f);
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
         }
-        tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 0L, 10L);
     }
 
     private void buildSchedule() {
         int n = Math.max(1, cfgInt("zone.stages", 6));
-        double startSize = cfgDouble("zone.start-size", 500.0);
+        double startSize = cfgDouble("zone.start-size", 800.0);
         double finalSize = cfgDouble("zone.final-size", 20.0);
         int total = cfgInt("zone.total-seconds", 1200);
-        int testTotal = cfgInt("test.total-seconds", 0);
-        if (testMode && testTotal > 0) total = testTotal;
         total = Math.max(n * 2, total);
         totalSec = total;
         double minWait = cfgInt("zone.min-wait-seconds", 45);
@@ -415,9 +494,10 @@ public class BattleRoyaleGame implements Match, Listener {
             sum += weights[k];
         }
 
-        shrinkAt = new int[n];
-        shrinkLen = new int[n];
-        sizes = new int[n];
+        baseStages = n;
+        shrinkAt = new int[n + FORCED_STAGES];
+        shrinkLen = new int[n + FORCED_STAGES];
+        sizes = new int[n + FORCED_STAGES];
         double t = 0.0;
         for (int i = 0; i < n; i++) {
             double wait = minWait + spare * weights[i * 2] / sum;
@@ -431,6 +511,17 @@ public class BattleRoyaleGame implements Match, Listener {
         }
         sizes[n - 1] = (int) finalSize;
         shrinkLen[n - 1] = Math.max(1, total - shrinkAt[n - 1]);
+
+        int gap = cfgInt("zone.force-gap-seconds", 300);
+        gap = Math.max(2, gap);
+        int forceLen = Math.max(1, Math.min(cfgInt("zone.force-shrink-seconds", 60), gap - 1));
+        int[] forceSizes = {cfgInt("zone.force-size-1", 10), cfgInt("zone.force-size-2", 1)};
+        for (int k = 0; k < FORCED_STAGES; k++) {
+            int end = total + gap * (k + 1);
+            shrinkAt[n + k] = end - forceLen;
+            shrinkLen[n + k] = forceLen;
+            sizes[n + k] = Math.max(1, forceSizes[k]);
+        }
         nextShrink = 0;
     }
 
@@ -448,7 +539,9 @@ public class BattleRoyaleGame implements Match, Listener {
             if (sec < shrinkAt[i]) {
                 int span = Math.max(1, shrinkAt[i] - prevEnd);
                 int left = shrinkAt[i] - sec;
-                return new Phase("ZONA " + (i + 1) + "/" + n, 0xFFD23C, left, left / (double) span, false, false);
+                String label = i < baseStages ? "ZONA " + (i + 1) + "/" + baseStages
+                        : "ZONA " + sizes[i - 1] + "x" + sizes[i - 1];
+                return new Phase(label, 0xFFD23C, left, left / (double) span, false, false);
             }
             int endAt = shrinkAt[i] + shrinkLen[i];
             if (sec < endAt) {
@@ -460,57 +553,69 @@ public class BattleRoyaleGame implements Match, Listener {
     }
 
     private void tick() {
-        if (state != State.RUNNING || world == null) return;
-        int sec = (int) ((System.currentTimeMillis() - dropAt) / 1000L);
+        if ((state != State.RUNNING && state != State.COUNTDOWN) || world == null) return;
+        long now = System.currentTimeMillis();
+        int sec = (int) ((now - matchStart) / 1000L);
         WorldBorder wb = world.getWorldBorder();
+        int pvpLeft = pvpDelay;
 
-        // zona mulai mengecil
-        while (nextShrink < shrinkAt.length && sec >= shrinkAt[nextShrink]) {
-            int i = nextShrink++;
-            long from = Math.round(wb.getSize());
-            wb.setSize(sizes[i], shrinkLen[i]);
-            Component big = Component.text("ZONA MENGECIL", NamedTextColor.RED, TextDecoration.BOLD);
-            Component small = Component.text(from + "x" + from + "  >  " + sizes[i] + "x" + sizes[i]
-                    + "  (" + Hud.fmtTime(shrinkLen[i]) + ")", NamedTextColor.YELLOW);
-            Title.Times times = Title.Times.times(Duration.ofMillis(150), Duration.ofMillis(2200), Duration.ofMillis(400));
-            for (Player p : participants()) {
-                p.showTitle(Title.title(big, small, times));
-                p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
+        if (state == State.RUNNING) {
+            pvpLeft = pvpOn ? 0 : Math.max(0, (int) Math.ceil((releaseAt + pvpDelay * 1000L - now) / 1000.0));
+
+            // zona mulai mengecil
+            while (nextShrink < shrinkAt.length && sec >= shrinkAt[nextShrink]) {
+                int i = nextShrink++;
+                long from = Math.round(wb.getSize());
+                wb.setSize(sizes[i], shrinkLen[i]);
+                Component big = Component.text("ZONA MENGECIL", NamedTextColor.RED, TextDecoration.BOLD);
+                Component small = Component.text(from + "x" + from + "  >  " + sizes[i] + "x" + sizes[i]
+                        + "  (" + Hud.fmtTime(shrinkLen[i]) + ")", NamedTextColor.YELLOW);
+                Title.Times times = Title.Times.times(Duration.ofMillis(150), Duration.ofMillis(2200), Duration.ofMillis(400));
+                for (Player p : participants()) {
+                    p.showTitle(Title.title(big, small, times));
+                    p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1f);
+                }
+                msg(Component.text("Zona mengecil jadi " + sizes[i] + "x" + sizes[i], NamedTextColor.RED, TextDecoration.BOLD));
             }
-            msg(Component.text("Zona mengecil jadi " + sizes[i] + "x" + sizes[i], NamedTextColor.RED, TextDecoration.BOLD));
-        }
 
-        // peringatan sebelum zona mengecil (30s, 10s, lalu hitung mundur 5..1)
-        if (nextShrink < shrinkAt.length) {
-            int i = nextShrink;
-            int left = shrinkAt[i] - sec;
-            if ((left == 30 || left == 10) && warned.add(i + ":" + left)) {
-                msg(Component.text("Zona mengecil jadi " + sizes[i] + "x" + sizes[i] + " dalam " + left + " detik",
-                        NamedTextColor.YELLOW));
-                for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
-            } else if (left >= 1 && left <= 5 && warned.add(i + ":" + left)) {
-                for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.6f);
+            // peringatan sebelum zona mengecil (30s, 10s, lalu hitung mundur 5..1)
+            if (nextShrink < shrinkAt.length) {
+                int i = nextShrink;
+                int left = shrinkAt[i] - sec;
+                if ((left == 30 || left == 10) && warned.add(i + ":" + left)) {
+                    msg(Component.text("Zona mengecil jadi " + sizes[i] + "x" + sizes[i] + " dalam " + left + " detik",
+                            NamedTextColor.YELLOW));
+                    for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
+                } else if (left >= 1 && left <= 5 && warned.add(i + ":" + left)) {
+                    for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.6f);
+                }
             }
-        }
 
-        if (!pvpOn && sec >= pvpDelay) {
-            pvpOn = true;
-            msg(Component.text("PVP aktif!", NamedTextColor.RED, TextDecoration.BOLD));
-            for (Player p : participants()) {
-                p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 0.6f, 1f);
+            if (!pvpOn && pvpLeft <= 0) {
+                pvpOn = true;
+                msg(Component.text("PVP aktif!", NamedTextColor.RED, TextDecoration.BOLD));
+                for (Player p : participants()) {
+                    p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 0.6f, 1f);
+                }
+            } else if (!pvpOn) {
+                if (pvpLeft == 10 && warned.add("pvp:10")) {
+                    msg(Component.text("PVP aktif dalam 10 detik", NamedTextColor.YELLOW));
+                } else if (pvpLeft >= 1 && pvpLeft <= 5 && warned.add("pvp:" + pvpLeft)) {
+                    for (Player p : participants()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.8f, 1.2f);
+                }
             }
         }
 
         Phase ph = phaseAt(sec);
         for (Player p : participants()) {
             if (!p.getWorld().equals(world)) continue;
-            updateHud(p, sec, ph, wb);
-            drawWall(p, wb);
+            updateHud(p, sec, pvpLeft, ph, wb);
+            if (state == State.RUNNING) drawWall(p, wb);
         }
     }
 
     /** HUD custom (bossbar + resource pack) kalau pack udah ke-load, kalau belum pakai actionbar biasa. */
-    private void updateHud(Player p, int sec, Phase ph, WorldBorder wb) {
+    private void updateHud(Player p, int sec, int pvpLeft, Phase ph, WorldBorder wb) {
         UUID id = p.getUniqueId();
         Location loc = p.getLocation();
         Location c = wb.getCenter();
@@ -527,9 +632,10 @@ public class BattleRoyaleGame implements Match, Listener {
         boolean outside = edge < 0;
         int distColor = outside ? 0xFF5555 : edge < 15 ? 0xFFAA00 : 0x55FF55;
         String distText = outside ? "LUAR ZONA " + (int) Math.ceil(-edge) + "m" : "TEPI ZONA " + (int) edge + "m";
-        String pvpText = pvpOn ? "PVP AKTIF" : "PVP " + Hud.fmtTime(Math.max(0, pvpDelay - sec));
+        String pvpText = pvpOn ? "PVP AKTIF" : "PVP " + Hud.fmtTime(pvpLeft);
         int pvpColor = pvpOn ? 0xFF5555 : 0xFFAA55;
-        String timer = ph.last() ? "--" : Hud.fmtTime(ph.remaining());
+        String timer = clock(sec);
+        String phaseText = ph.last() ? ph.label() : ph.label() + " " + Hud.fmtTime(ph.remaining());
         int killCount = kills.getOrDefault(id, 0);
 
         if (plugin.packReady(p)) {
@@ -539,7 +645,7 @@ public class BattleRoyaleGame implements Match, Listener {
                 bars.put(id, bar);
                 p.showBossBar(bar);
             }
-            bar.name(Hud.buildBr(new Hud.BrData(ph.label(), ph.color(), timer, ph.frac(), pvpText, pvpColor,
+            bar.name(Hud.buildBr(new Hud.BrData(phaseText, ph.color(), timer, ph.frac(), pvpText, pvpColor,
                     alive.size(), Math.max(startCount, alive.size()), arrow, distText, distColor, killCount, testMode)));
             return;
         }
@@ -547,7 +653,8 @@ public class BattleRoyaleGame implements Match, Listener {
         Component sep = Component.text("  |  ", NamedTextColor.DARK_GRAY);
         Component line = Component.empty();
         if (testMode) line = line.append(Component.text("[TES] ", NamedTextColor.GOLD, TextDecoration.BOLD));
-        line = line.append(Component.text(ph.label() + " " + timer, TextColor.color(ph.color())))
+        line = line.append(Component.text(timer, NamedTextColor.WHITE))
+                .append(sep).append(Component.text(phaseText, TextColor.color(ph.color())))
                 .append(sep).append(Component.text(pvpText, TextColor.color(pvpColor)))
                 .append(sep).append(Component.text(Hud.ARROW_TEXT[arrow] + " " + distText, TextColor.color(distColor)))
                 .append(sep).append(Component.text(alive.size() + " hidup", NamedTextColor.GREEN))
@@ -784,15 +891,34 @@ public class BattleRoyaleGame implements Match, Listener {
 
     @Override
     public void onBlockPlace(BlockPlaceEvent e) {
-        if (state != State.RUNNING || !alive.contains(e.getPlayer().getUniqueId())) e.setCancelled(true);
+        if (state != State.RUNNING || !alive.contains(e.getPlayer().getUniqueId())) {
+            e.setCancelled(true);
+            return;
+        }
+        placed.add(e.getBlockPlaced().getBlockKey());
     }
 
     @Override
-    public void onBlockBreak(BlockBreakEvent e) { e.setCancelled(true); }
+    public void onBlockBreak(BlockBreakEvent e) {
+        boolean own = state == State.RUNNING && alive.contains(e.getPlayer().getUniqueId())
+                && placed.remove(e.getBlock().getBlockKey());
+        if (!own) e.setCancelled(true);
+    }
 
     @Override
     public void onDeath(Player p, PlayerDeathEvent e) {
         e.deathMessage(null);
+        if (state == State.ENDED) {
+            deathLocs.put(p.getUniqueId(), p.getLocation());
+            e.setKeepInventory(true);
+            e.getDrops().clear();
+            e.setKeepLevel(true);
+            e.setDroppedExp(0);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (p.isOnline() && p.isDead()) p.spigot().respawn();
+            });
+            return;
+        }
         deathLocs.put(p.getUniqueId(), p.getLocation());
         Player killer = p.getKiller();
         if (killer != null && !killer.equals(p)) kills.merge(killer.getUniqueId(), 1, Integer::sum);

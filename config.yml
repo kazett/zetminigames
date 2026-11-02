@@ -15,23 +15,29 @@ hud:
   slot-width: 11
 
 battleroyale:
+  # Versi pengaturan. Kalau lebih kecil dari 2, plugin otomatis nimpa nilai lama di bawah ini.
+  rev: 2
   center:
     x: 0
     z: 0
   sky:
-    y: 200
-    radius: 16
+    y: 300
+    radius: 24
+  # Waktu di platform tertutup sebelum countdown 5 detik (detik)
+  ready-seconds: 30
   zone:
-    start-size: 500
+    start-size: 800
     final-size: 20
     stages: 6
+    # Zona 20x20 tercapai di detik ini (dihitung dari awal countdown 5 detik). 1200 = menit 20
     total-seconds: 1200
     min-wait-seconds: 45
     min-shrink-seconds: 30
     damage: 1.0
-  pvp-delay-seconds: 60
-  # Mode tes (panel Battle Royale > MODE TES). Game jalan sama persis kayak normal.
-  # Isi angka ini kalau mau tes lebih cepat (0 / -1 = sama kayak game normal).
-  test:
-    total-seconds: 0       # contoh 300 = zona selesai mengecil di menit 5
-    pvp-delay-seconds: -1  # contoh 10 = PVP aktif 10 detik setelah turun
+    # Zona paksa: ukuran tercapai pada total-seconds + gap (menit 25 = 10x10) dan total-seconds + 2*gap (menit 30 = 1x1, paling kecil)
+    force-gap-seconds: 300
+    force-shrink-seconds: 60
+    force-size-1: 10
+    force-size-2: 1
+  # PVP aktif sekian detik setelah platform hancur
+  pvp-delay-seconds: 30

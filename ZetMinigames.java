@@ -24,6 +24,7 @@ public class ZetMinigames extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        migrateConfig();
         manager = new GameManager(this);
         cleanupStaleWorlds();
         Bukkit.getPluginManager().registerEvents(new GameListener(manager), this);
@@ -38,6 +39,16 @@ public class ZetMinigames extends JavaPlugin {
             }
         }
         getLogger().info("ZetMinigames aktif.");
+    }
+
+    private void migrateConfig() {
+        if (getConfig().getInt("battleroyale.rev", 0) >= 2) return;
+        getConfig().set("battleroyale.rev", 2);
+        getConfig().set("battleroyale.sky.y", 300);
+        getConfig().set("battleroyale.sky.radius", 24);
+        getConfig().set("battleroyale.zone.start-size", 800);
+        getConfig().set("battleroyale.pvp-delay-seconds", 30);
+        saveConfig();
     }
 
     @Override
