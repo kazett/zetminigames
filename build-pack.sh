@@ -10,7 +10,7 @@ cp pack.mcmeta pack-build/pack.mcmeta
 cp hud.json pack-build/assets/zetminigames/font/hud.json
 cp hud_low.json pack-build/assets/zetminigames/font/hud_low.json
 cp hud_top.json pack-build/assets/zetminigames/font/hud_top.json
-for f in hud_panel hud_frame hud_skull hud_item hud_alive hud_logo hud_border hud_banner hud_banner_round hud_banner_draw hud_winframe hud_icons hud_bar hud_count hud_tpwarn hud_banner_go hud_banner_swap hud_banner_elim hud_br hud_arrows; do
+for f in hud_panel hud_frame hud_skull hud_item hud_alive hud_logo hud_border hud_banner hud_banner_round hud_banner_draw hud_winframe hud_icons hud_bar hud_count hud_tpwarn hud_banner_go hud_banner_swap hud_banner_elim hud_banner_ready hud_br hud_arrows; do
   cp "$f.png" "$FONT/$f.png"
 done
 
