@@ -1,0 +1,71 @@
+{
+  "providers": [
+    {
+      "type": "reference",
+      "id": "minecraft:default"
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/panel_banner_pof.png",
+      "ascent": 19,
+      "height": 32,
+      "chars": [
+        "\ue100"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/panel_banner_ds.png",
+      "ascent": 19,
+      "height": 32,
+      "chars": [
+        "\ue101"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/panel_banner_mace.png",
+      "ascent": 19,
+      "height": 32,
+      "chars": [
+        "\ue102"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/panel_banner_br.png",
+      "ascent": 19,
+      "height": 32,
+      "chars": [
+        "\ue103"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/panel_step1.png",
+      "ascent": 12,
+      "height": 16,
+      "chars": [
+        "\ue110"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/panel_step2.png",
+      "ascent": 12,
+      "height": 16,
+      "chars": [
+        "\ue111"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/panel_step3.png",
+      "ascent": 12,
+      "height": 16,
+      "chars": [
+        "\ue112"
+      ]
+    }
+  ]
+}
