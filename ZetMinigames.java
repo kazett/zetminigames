@@ -4,6 +4,7 @@ import id.zetminigames.core.Commands;
 import id.zetminigames.core.GameListener;
 import id.zetminigames.core.GameManager;
 import id.zetminigames.hud.PackListener;
+import id.zetminigames.panel.PofGui;
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
@@ -29,6 +30,7 @@ public class ZetMinigames extends JavaPlugin {
         cleanupStaleWorlds();
         Bukkit.getPluginManager().registerEvents(new GameListener(manager), this);
         Bukkit.getPluginManager().registerEvents(new PackListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new PofGui.Events(this), this);
 
         Commands commands = new Commands(this);
         for (String name : new String[]{"panel", "pof"}) {

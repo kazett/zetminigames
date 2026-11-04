@@ -1,0 +1,21 @@
+{
+  "providers": [
+    {
+      "type": "space",
+      "advances": {
+        " ": 7
+      }
+    },
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/gui_text.png",
+      "ascent": -65,
+      "height": 10,
+      "chars": [
+        "0123456789ABCDEF",
+        "GHIJKLMNOPQRSTUV",
+        "WXYZsm\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+      ]
+    }
+  ]
+}

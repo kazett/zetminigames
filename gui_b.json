@@ -1,0 +1,13 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "zetminigames:font/gui_layers_b.png",
+      "ascent": -98,
+      "height": 111,
+      "chars": [
+        "\ue100\ue101"
+      ]
+    }
+  ]
+}
