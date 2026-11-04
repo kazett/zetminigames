@@ -7,16 +7,6 @@ resource-pack:
   required: true
   prompt: "Resource pack ZetMinigames"
 
-# ===== GUI custom =====
-gui:
-  # true = setting Pillar of Fortune pakai GUI custom blue glass (butuh resource pack).
-  # false = pakai dialog biasa. Pemain tanpa pack otomatis dapat dialog.
-  custom: true
-  # Tuning kalau gambar GUI keliatan geser / ada celah di tengah (jarang perlu).
-  # tile-advance: lebar satu potongan gambar (default 89). text-advance: lebar satu huruf nilai (default 7).
-  tile-advance: 89
-  text-advance: 7
-
 # ===== Tuning HUD =====
 hud:
   # Lebar advance kepala pemain (pixel). Kalau tanda X gak pas nutup kepala, coba 8 / 9 / 10.

@@ -17,9 +17,11 @@ import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
 import io.papermc.paper.registry.data.dialog.input.SingleOptionDialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
+import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickCallback;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -30,12 +32,17 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Semua menu /panel (Dialog bawaan Minecraft, tanpa resource pack). */
 public final class Panels {
     private Panels() {}
 
-    /** Isi form sementara, biar gak ilang pas pindah halaman / error. */
-    static final class Draft {
+    private static final Key PANEL_FONT = Key.key("zetminigames", "panel");
+    private static final int W = 320;
+    private static final int HALF = 158;
+    private static final TextColor LABEL = TextColor.color(0x9FD8FF);
+    private static final TextColor HINT = TextColor.color(0x7FA8D8);
+    private static final TextColor ACCENT = TextColor.color(0x5AD2FF);
+
+    private static final class Draft {
         String itemText = "60s";
         String borderText = "5m";
         String speed = "SEDANG";
@@ -57,7 +64,6 @@ public final class Panels {
         return d;
     }
 
-    /** Judul dialog; kalau pack udah ke-load, ada ikon mahkota custom di depannya. */
     private static Component title(ZetMinigames plugin, Player p, String t) {
         Component text = Component.text(t, NamedTextColor.GOLD, TextDecoration.BOLD);
         if (plugin.packReady(p)) {
@@ -67,18 +73,49 @@ public final class Panels {
         return text;
     }
 
-    /** Label tombol: ikon custom (kalau pack udah ke-load) + teks. */
+    private static Component banner(ZetMinigames plugin, Player p, GameType type, String fallback) {
+        if (!plugin.packReady(p)) {
+            return Component.text(fallback, NamedTextColor.GOLD, TextDecoration.BOLD);
+        }
+        String glyph = switch (type) {
+            case POF -> "\uE100";
+            case DEATHSWAP -> "\uE101";
+            case MACE -> "\uE102";
+            case BATTLEROYALE -> "\uE103";
+        };
+        return Component.text(glyph, NamedTextColor.WHITE).font(PANEL_FONT);
+    }
+
+    private static DialogBody step(ZetMinigames plugin, Player p, int n, String label) {
+        if (!plugin.packReady(p)) {
+            return DialogBody.plainMessage(Component.text("Langkah " + n + "/3 - " + label, ACCENT, TextDecoration.BOLD), W);
+        }
+        String glyph = String.valueOf((char) (0xE110 + n - 1));
+        return DialogBody.plainMessage(Component.text(glyph + "\n ", NamedTextColor.WHITE).font(PANEL_FONT), W);
+    }
+
     private static Component lab(ZetMinigames plugin, Player p, String icon, Component text) {
         if (!plugin.packReady(p)) return text;
         return Component.empty().append(Component.text(icon, NamedTextColor.WHITE).font(Hud.FONT))
                 .append(Component.text(" ")).append(text);
     }
 
+    private static DialogInput field(String key, String label, String initial) {
+        return DialogInput.text(key, Component.text(label, LABEL)).initial(initial).width(W).build();
+    }
+
+    private static DialogInput toggle(String key, String label, boolean on) {
+        List<SingleOptionDialogInput.OptionEntry> entries = new ArrayList<>();
+        entries.add(SingleOptionDialogInput.OptionEntry.create("1",
+                Component.text("ON", NamedTextColor.GREEN, TextDecoration.BOLD), on));
+        entries.add(SingleOptionDialogInput.OptionEntry.create("0",
+                Component.text("OFF", NamedTextColor.GRAY), !on));
+        return DialogInput.singleOption(key, Component.text(label, NamedTextColor.WHITE), entries).width(W).build();
+    }
+
     private static ClickCallback.Options once() {
         return ClickCallback.Options.builder().build();
     }
-
-    // ===================== MENU UTAMA =====================
 
     public static void openMain(ZetMinigames plugin, Player p) {
         ActionButton pofBtn = ActionButton.create(
@@ -118,47 +155,33 @@ public final class Panels {
         p.showDialog(dialog);
     }
 
-    // ===================== HALAMAN 1: SETTING =====================
-
     private static void openSettings(ZetMinigames plugin, Player host, Draft d, String error) {
-        // Pillar of Fortune: GUI custom blue glass (butuh resource pack). Tanpa pack = Dialog di bawah.
-        if (d.type == GameType.POF && PofGui.enabled(plugin, host)) {
-            if (error != null) host.sendMessage(Component.text(error, NamedTextColor.RED));
-            PofGui.open(plugin, host, d);
-            return;
-        }
         boolean ds = d.type == GameType.DEATHSWAP;
         boolean mace = d.type == GameType.MACE;
         List<DialogBody> body = new ArrayList<>();
-        body.add(DialogBody.plainMessage(Component.text(d.type.label.toUpperCase(), NamedTextColor.YELLOW, TextDecoration.BOLD)));
-        body.add(DialogBody.plainMessage(Component.text(
-                "Format: 30s, 2m", NamedTextColor.GRAY)));
+        body.add(step(plugin, host, 1, "SETTING"));
+        body.add(DialogBody.plainMessage(Component.text("Format waktu: 30s, 2m", HINT), W));
         if (error != null) {
-            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD)));
+            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD), W));
         }
 
         List<DialogInput> inputs = new ArrayList<>();
         if (ds) {
-            inputs.add(DialogInput.text("swap", Component.text("Swap (min 10s)"))
-                    .initial(d.swapText).width(250).build());
+            inputs.add(field("swap", "Swap (min 10s)", d.swapText));
         } else if (!mace) {
-            inputs.add(DialogInput.text("item", Component.text("Item tiap"))
-                    .initial(d.itemText).width(250).build());
-            inputs.add(DialogInput.text("border", Component.text("Border mulai"))
-                    .initial(d.borderText).width(250).build());
+            inputs.add(field("item", "Item tiap", d.itemText));
+            inputs.add(field("border", "Border mulai", d.borderText));
             List<SingleOptionDialogInput.OptionEntry> speeds = new ArrayList<>();
             for (ShrinkSpeed s : ShrinkSpeed.values()) {
                 speeds.add(SingleOptionDialogInput.OptionEntry.create(s.name(),
-                        Component.text(s.label),
+                        Component.text(s.label, ACCENT, TextDecoration.BOLD),
                         s.name().equals(d.speed)));
             }
-            inputs.add(DialogInput.singleOption("speed", Component.text("Speed border"), speeds).build());
+            inputs.add(DialogInput.singleOption("speed", Component.text("Speed border", LABEL), speeds).width(W).build());
         } else {
-            inputs.add(DialogInput.text("mace", Component.text("Timer (min 5s)"))
-                    .initial(d.maceText).width(250).build());
+            inputs.add(field("mace", "Timer (min 5s)", d.maceText));
         }
-        inputs.add(DialogInput.text("rounds", Component.text("Ronde (1-10)"))
-                .initial(d.rounds).width(250).build());
+        inputs.add(field("rounds", "Ronde (1-10)", d.rounds));
         if (!ds && !mace) {
             List<SingleOptionDialogInput.OptionEntry> maps = new ArrayList<>();
             for (PofMap m : PofMap.values()) {
@@ -167,28 +190,27 @@ public final class Panels {
             }
             maps.add(SingleOptionDialogInput.OptionEntry.create("RANDOM",
                     Component.text("Random", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD), "RANDOM".equals(d.map)));
-            inputs.add(DialogInput.singleOption("map", Component.text("Map"), maps).build());
+            inputs.add(DialogInput.singleOption("map", Component.text("Map", LABEL), maps).width(W).build());
         }
         if (ds) {
-            inputs.add(DialogInput.bool("unique", Component.text("Gak boleh mati cara sama")).initial(d.unique).build());
+            inputs.add(toggle("unique", "Gak boleh mati cara sama", d.unique));
         }
-        inputs.add(DialogInput.bool("draw", Component.text("Boleh seri")).initial(d.draw).build());
-        inputs.add(DialogInput.bool("skip", Component.text("Stop kalau pasti menang")).initial(d.skip).build());
-        inputs.add(DialogInput.bool("test", Component.text("Mode tes")).initial(d.test).build());
+        inputs.add(toggle("draw", "Boleh seri", d.draw));
+        inputs.add(toggle("skip", "Stop kalau pasti menang", d.skip));
+        inputs.add(toggle("test", "Mode tes", d.test));
         if (!ds && !mace) {
-            inputs.add(DialogInput.text("pillars", Component.text("Pilar tes (2-20)"))
-                    .initial(d.testPillars).width(250).build());
+            inputs.add(field("pillars", "Pilar tes (2-20)", d.testPillars));
         }
 
         ActionButton next = ActionButton.create(
-                lab(plugin, host, Hud.ICO_USERS, Component.text("Lanjut", NamedTextColor.GREEN, TextDecoration.BOLD)), null, 200,
+                lab(plugin, host, Hud.ICO_USERS, Component.text("Lanjut", NamedTextColor.GREEN, TextDecoration.BOLD)), null, HALF,
                 DialogAction.customClick((view, audience) -> {
                     d.rounds = nz(view.getText("rounds"), "1");
-                    d.draw = Boolean.TRUE.equals(view.getBoolean("draw"));
-                    d.skip = Boolean.TRUE.equals(view.getBoolean("skip"));
-                    d.test = Boolean.TRUE.equals(view.getBoolean("test"));
+                    d.draw = "1".equals(view.getText("draw"));
+                    d.skip = "1".equals(view.getText("skip"));
+                    d.test = "1".equals(view.getText("test"));
                     if (ds) {
-                        d.unique = Boolean.TRUE.equals(view.getBoolean("unique"));
+                        d.unique = "1".equals(view.getText("unique"));
                         d.swapText = nz(view.getText("swap"), "5m");
                     } else if (mace) {
                         d.maceText = nz(view.getText("mace"), "15s");
@@ -215,18 +237,16 @@ public final class Panels {
                         openPlayers(plugin, host, d, null);
                     });
                 }, once()));
-        ActionButton cancel = ActionButton.create(lab(plugin, host, Hud.ICO_CROSS, Component.text("Batal", NamedTextColor.RED)), null, 120, null);
+        ActionButton cancel = ActionButton.create(lab(plugin, host, Hud.ICO_CROSS, Component.text("Batal", NamedTextColor.RED)), null, HALF, null);
 
         Dialog dialog = Dialog.create(b -> b.empty()
-                .base(DialogBase.builder(title(plugin, host, "Setting"))
+                .base(DialogBase.builder(banner(plugin, host, d.type, d.type.label))
                         .body(body).inputs(inputs).build())
                 .type(DialogType.confirmation(next, cancel)));
         host.showDialog(dialog);
     }
 
-    // ===================== HALAMAN 2: PILIH PEMAIN =====================
-
-    static void openPlayers(ZetMinigames plugin, Player host, Draft d, String error) {
+    private static void openPlayers(ZetMinigames plugin, Player host, Draft d, String error) {
         List<Player> others = new ArrayList<>();
         for (Player o : Bukkit.getOnlinePlayers()) {
             if (o.equals(host) || plugin.manager().busy(o.getUniqueId())) continue;
@@ -235,15 +255,16 @@ public final class Panels {
         }
 
         List<DialogBody> body = new ArrayList<>();
+        body.add(step(plugin, host, 2, "PEMAIN"));
         body.add(DialogBody.plainMessage(Component.text(
                 d.test ? "Mode tes: gak usah pilih pemain"
                         : "Pilih " + (d.type.min - 1) + "-" + (d.type.max - 1) + " pemain",
-                NamedTextColor.GRAY)));
+                HINT), W));
         if (others.isEmpty()) {
-            body.add(DialogBody.plainMessage(Component.text("Gak ada yang online", NamedTextColor.DARK_GRAY)));
+            body.add(DialogBody.plainMessage(Component.text("Gak ada yang online", NamedTextColor.DARK_GRAY), W));
         }
         if (error != null) {
-            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD)));
+            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD), W));
         }
 
         List<DialogInput> inputs = new ArrayList<>();
@@ -253,7 +274,7 @@ public final class Panels {
         }
 
         ActionButton create = ActionButton.create(
-                lab(plugin, host, Hud.ICO_PLAY, Component.text("Buat Lobby", NamedTextColor.GREEN, TextDecoration.BOLD)), null, 160,
+                lab(plugin, host, Hud.ICO_PLAY, Component.text("Buat Lobby", NamedTextColor.GREEN, TextDecoration.BOLD)), null, HALF,
                 DialogAction.customClick((view, audience) -> {
                     List<Player> picked = new ArrayList<>();
                     for (int i = 0; i < others.size(); i++) {
@@ -284,18 +305,17 @@ public final class Panels {
                         if (err != null) openPlayers(plugin, host, d, err);
                     });
                 }, once()));
-        ActionButton back = ActionButton.create(lab(plugin, host, Hud.ICO_BACK, Component.text("Kembali", NamedTextColor.GRAY)), null, 120,
+        ActionButton back = ActionButton.create(lab(plugin, host, Hud.ICO_BACK, Component.text("Kembali", NamedTextColor.GRAY)), null, HALF,
                 DialogAction.customClick((view, audience) ->
                         Bukkit.getScheduler().runTask(plugin, () -> openSettings(plugin, host, d, null)), once()));
 
         Dialog dialog = Dialog.create(b -> b.empty()
-                .base(DialogBase.builder(title(plugin, host, "Pilih Pemain"))
+                .base(DialogBase.builder(banner(plugin, host, d.type, "Pilih Pemain"))
                         .body(body).inputs(inputs).build())
                 .type(DialogType.confirmation(create, back)));
         host.showDialog(dialog);
     }
 
-    /** Panel buat yang lagi di lobby: ready / tolak / batalin, semua klik. */
     public static void openLobby(ZetMinigames plugin, Player p) {
         Lobby lobby = plugin.manager().lobbyOf(p.getUniqueId());
         if (lobby == null) { openMain(plugin, p); return; }
@@ -312,10 +332,10 @@ public final class Panels {
         } else {
             buttons.add(btn(plugin, p, Hud.ICO_CROSS, "Keluar", NamedTextColor.RED, () -> plugin.manager().leave(p)));
         }
-        Component status = Component.text("Ready: " + lobby.ready.size() + "/" + lobby.invited.size());
+        Component status = Component.text("Ready: " + lobby.ready.size() + "/" + lobby.invited.size(), ACCENT, TextDecoration.BOLD);
         Dialog dialog = Dialog.create(b -> b.empty()
-                .base(DialogBase.builder(title(plugin, p, "Lobby " + lobby.settings.type.label))
-                        .body(List.of(DialogBody.plainMessage(status)))
+                .base(DialogBase.builder(banner(plugin, p, lobby.settings.type, "Lobby " + lobby.settings.type.label))
+                        .body(List.of(step(plugin, p, 3, "LOBBY"), DialogBody.plainMessage(status, W)))
                         .build())
                 .type(DialogType.multiAction(buttons, null, 1)));
         p.showDialog(dialog);
@@ -349,18 +369,18 @@ public final class Panels {
         body.add(DialogBody.plainMessage(Component.text(
                 test ? "READY " + lobby.ready.size() + "/" + type.max + " (tes)"
                         : "READY " + lobby.ready.size() + "/" + type.max + " (min " + type.min + ")",
-                NamedTextColor.YELLOW, TextDecoration.BOLD)));
+                ACCENT, TextDecoration.BOLD), W));
         if (test) {
             body.add(DialogBody.plainMessage(Component.text(
                     "Mode tes: tutup game lewat /panel > Selesai.",
-                    NamedTextColor.GOLD)));
+                    NamedTextColor.GOLD), W));
         }
-        body.add(DialogBody.plainMessage(Component.text(String.join(", ", readyNames), NamedTextColor.GREEN)));
+        body.add(DialogBody.plainMessage(Component.text(String.join(", ", readyNames), NamedTextColor.GREEN), W));
         if (!waitNames.isEmpty()) {
-            body.add(DialogBody.plainMessage(Component.text("Menunggu: " + String.join(", ", waitNames), NamedTextColor.GRAY)));
+            body.add(DialogBody.plainMessage(Component.text("Menunggu: " + String.join(", ", waitNames), HINT), W));
         }
         if (error != null) {
-            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD)));
+            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD), W));
         }
 
         List<ActionButton> buttons = new ArrayList<>();
@@ -378,7 +398,7 @@ public final class Panels {
         buttons.add(btn(plugin, host, Hud.ICO_CROSS, "Batal", NamedTextColor.RED, () -> plugin.manager().cancel(host)));
 
         Dialog dialog = Dialog.create(b -> b.empty()
-                .base(DialogBase.builder(title(plugin, host, "Lobby " + type.label))
+                .base(DialogBase.builder(banner(plugin, host, type, "Lobby " + type.label))
                         .body(body).build())
                 .type(DialogType.multiAction(buttons, null, 1)));
         host.showDialog(dialog);
@@ -395,12 +415,12 @@ public final class Panels {
         }
 
         List<DialogBody> body = new ArrayList<>();
-        body.add(DialogBody.plainMessage(Component.text("Pilih pemain", NamedTextColor.GRAY)));
+        body.add(DialogBody.plainMessage(Component.text("Pilih pemain", HINT), W));
         if (others.isEmpty()) {
-            body.add(DialogBody.plainMessage(Component.text("Gak ada yang online", NamedTextColor.DARK_GRAY)));
+            body.add(DialogBody.plainMessage(Component.text("Gak ada yang online", NamedTextColor.DARK_GRAY), W));
         }
         if (error != null) {
-            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD)));
+            body.add(DialogBody.plainMessage(Component.text(error, NamedTextColor.RED, TextDecoration.BOLD), W));
         }
 
         List<DialogInput> inputs = new ArrayList<>();
@@ -410,7 +430,7 @@ public final class Panels {
         }
 
         ActionButton send = ActionButton.create(
-                lab(plugin, host, Hud.ICO_PLAY, Component.text("Undang", NamedTextColor.GREEN, TextDecoration.BOLD)), null, 160,
+                lab(plugin, host, Hud.ICO_PLAY, Component.text("Undang", NamedTextColor.GREEN, TextDecoration.BOLD)), null, HALF,
                 DialogAction.customClick((view, audience) -> {
                     List<Player> picked = new ArrayList<>();
                     for (int i = 0; i < others.size(); i++) {
@@ -424,18 +444,17 @@ public final class Panels {
                         else openBrHost(plugin, host, null);
                     });
                 }, once()));
-        ActionButton back = ActionButton.create(lab(plugin, host, Hud.ICO_BACK, Component.text("Kembali", NamedTextColor.GRAY)), null, 120,
+        ActionButton back = ActionButton.create(lab(plugin, host, Hud.ICO_BACK, Component.text("Kembali", NamedTextColor.GRAY)), null, HALF,
                 DialogAction.customClick((view, audience) ->
                         Bukkit.getScheduler().runTask(plugin, () -> openBrHost(plugin, host, null)), once()));
 
         Dialog dialog = Dialog.create(b -> b.empty()
-                .base(DialogBase.builder(title(plugin, host, "Undang"))
+                .base(DialogBase.builder(banner(plugin, host, lobby.settings.type, "Undang"))
                         .body(body).inputs(inputs).build())
                 .type(DialogType.confirmation(send, back)));
         host.showDialog(dialog);
     }
 
-    /** Panel buat yang lagi main: tombol menyerah. */
     public static void openInGame(ZetMinigames plugin, Player p) {
         List<ActionButton> buttons = new ArrayList<>();
         Match g = plugin.manager().gameOf(p.getUniqueId());
@@ -458,19 +477,16 @@ public final class Panels {
     }
 
     private static ActionButton btn(ZetMinigames plugin, Player p, String icon, String label, NamedTextColor color, Runnable action) {
-        return ActionButton.create(lab(plugin, p, icon, Component.text(label, color)), null, 220,
+        return ActionButton.create(lab(plugin, p, icon, Component.text(label, color)), null, W,
                 DialogAction.customClick((view, audience) ->
                                 Bukkit.getScheduler().runTask(plugin, action),
                         ClickCallback.Options.builder().build()));
     }
 
-    // ===================== PARSER =====================
-
     private static String nz(String v, String def) {
         return (v == null || v.isBlank()) ? def : v.trim();
     }
 
-    /** "30", "30s", "2m", "1m30s", "1j" -> detik. Return -1 kalau gak valid. */
     static int parseTime(String text) {
         if (text == null) return -1;
         String t = text.trim().toLowerCase().replace(",", ".");
@@ -496,7 +512,6 @@ public final class Panels {
         return (int) Math.min(total, 7200);
     }
 
-    /** 1..10, atau -1 kalau gak valid. */
     private static int parseRounds(String t) {
         try {
             int v = Integer.parseInt(t.trim());
